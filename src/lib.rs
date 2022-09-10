@@ -40,7 +40,7 @@ pub mod datanode {
             include!(concat!(env!("OUT_DIR"), "/datanode.api.v1.rs"));
         }
         pub mod v2 {
-            include!(concat!(env!("OUT_DIR"), "/datanode.api.v1.rs"));
+            include!(concat!(env!("OUT_DIR"), "/datanode.api.v2.rs"));
         }
     }
 }

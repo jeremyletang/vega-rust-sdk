@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package vega.snapshot.v1;
-option go_package = "code.vegaprotocol.io/protos/vega/snapshot/v1";
+option go_package = "code.vegaprotocol.io/vega/protos/vega/snapshot/v1";
 
 import "vega/vega.proto";
 import "vega/markets.proto";
@@ -113,6 +113,8 @@ message Payload {
     ERC20MultiSigTopologyPending erc20_multisig_topology_pending = 52;
     ProofOfWork proof_of_work = 53;
     PendingAssetUpdates pending_asset_updates = 54;
+    ProtocolUpgradeProposals protocol_upgrade_proposals = 55;
+    BankingBridgeState banking_bridge_state = 56;
   }
 }
 
@@ -221,6 +223,8 @@ message AssetAction {
   vega.ERC20Deposit erc20_deposit = 8;
   vega.ERC20AssetList asset_list = 9;
   vega.ERC20AssetLimitsUpdated erc20_asset_limits_updated = 10;
+  bool erc20_bridge_stopped = 11;
+  bool erc20_bridge_resumed = 12;
 }
 
 message BankingWithdrawals {
@@ -245,6 +249,10 @@ message BankingRecurringTransfers {
 
 message BankingScheduledTransfers {
   repeated vega.checkpoint.v1.ScheduledTransferAtTime transfers_at_time = 1;
+}
+
+message BankingBridgeState {
+  vega.checkpoint.v1.BridgeState bridge_state = 1;
 }
 
 message Checkpoint {
@@ -400,13 +408,15 @@ message EquityShare {
 message FeeSplitter {
   int64  time_window_start = 1;
   string trade_value = 2;
+  string avg = 3;
+  uint64 window = 4;
 }
 
 message Market {
   vega.Market market = 1;
   PriceMonitor price_monitor = 2;
   AuctionState auction_state = 3;
-  repeated vega.Order pegged_orders = 4;
+  PeggedOrders pegged_orders = 4;
   repeated vega.Order expiring_orders = 5;
   string last_best_bid = 6;
   string last_best_ask = 7;
@@ -421,6 +431,10 @@ message Market {
   bool risk_factor_consensus_reached = 16;
   FeeSplitter fee_splitter = 17;
   string settlement_price = 18;
+}
+
+message PeggedOrders {
+  repeated vega.Order parked_orders = 2;
 }
 
 message ExecutionMarkets {
@@ -607,6 +621,7 @@ message PendingEthereumKeyRotation {
   uint64 block_height = 1;
   string node_id = 2;
   string new_address = 3;
+  string submitter = 4;
 }
 
 message Topology {
@@ -615,7 +630,23 @@ message Topology {
   repeated PendingKeyRotation pending_pub_key_rotations = 3;
   ValidatorPerformance validator_performance = 4;
   repeated PendingEthereumKeyRotation pending_ethereum_key_rotations = 5;
+  ToplogySignatures signatures = 6;
 }
+
+
+message ToplogySignatures {
+  repeated PendingERC20MultisigControlSignature pending_signatures = 1;
+  repeated string issued_signatures = 2;
+}
+
+message PendingERC20MultisigControlSignature {
+  string node_id = 1;
+  string ethereum_address = 2;
+  string nonce = 3;
+  uint64 epoch_seq = 4;
+  bool added = 5;
+}
+
 
 message ValidatorState {
   vega.events.v1.ValidatorUpdate validator_update = 1;
@@ -758,4 +789,16 @@ message ProofOfWorkParams {
 message TransactionsAtHeight {
   uint64 height = 1;
   repeated string transactions = 2;
+}
+
+message ProtocolUpgradeProposals {
+  repeated vega.events.v1.ProtocolUpgradeEvent active_proposals = 1;
+  AcceptedProtocolUpgradeProposal accepted_proposal = 2;
+}
+
+message AcceptedProtocolUpgradeProposal {
+    // The block height at which to perform the upgrade
+    uint64 upgrade_block_height = 1;
+    // the release tag for the vega binary
+    string vega_release_tag = 2;   
 }

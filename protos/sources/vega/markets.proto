@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package vega;
-option go_package = "code.vegaprotocol.io/protos/vega";
+option go_package = "code.vegaprotocol.io/vega/protos/vega";
 
 import "vega/oracles/v1/spec.proto";
 
@@ -9,9 +9,9 @@ import "vega/oracles/v1/spec.proto";
 // 1. `duration > 0`, `volume == 0`:
 //   The auction will last for at least N seconds
 // 2. `duration == 0`, `volume > 0`:
-//   The auction will end once we can close with given traded volume
+//   The auction will end once the given volume will match at uncrossing
 // 3. `duration > 0`, `volume > 0`:
-//   The auction will take at least N seconds, but can end sooner if we can trade a certain volume
+//   The auction will take at least N seconds, but can end sooner if the market can trade a certain volume
 message AuctionDuration {
   // Duration of the auction in seconds
   int64 duration = 1;
@@ -181,8 +181,6 @@ message PriceMonitoringParameters {
 message PriceMonitoringSettings {
   // Specifies price monitoring parameters to be used for price monitoring purposes
   PriceMonitoringParameters parameters = 1;
-  // Specifies how often (expressed in seconds) the price monitoring bounds should be updated
-  int64 update_frequency = 2;
 }
 
 // LiquidityMonitoringParameters contains settings used for liquidity monitoring
@@ -244,6 +242,8 @@ message Market {
     TRADING_MODE_OPENING_AUCTION = 3;
     // Auction triggered by monitoring
     TRADING_MODE_MONITORING_AUCTION = 4;
+    // Not trading is allowed
+    TRADING_MODE_NO_TRADING = 5;
 
     // Note: If adding an enum value, add a matching entry in:
     //       - gateway/graphql/helpers_enum.go
