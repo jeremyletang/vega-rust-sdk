@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package vega.data.v1;
+option go_package = "code.vegaprotocol.io/vega/protos/vega/data/v1";
+
+// Filter describes the conditions under which a data source data is considered of
+// interest or not.
+message Filter {
+  // key is the data source data property key targeted by the filter.
+  PropertyKey key = 1;
+  // conditions are the conditions that should be matched by the data to be
+  // considered of interest.
+  repeated Condition conditions = 2;
+}
+
+// PropertyKey describes the property key contained in an data source data.
+message PropertyKey {
+  // name is the name of the property.
+  string name = 1;
+  // type is the type of the property.
+  Type type = 2;
+  // Type describes the type of properties that are supported by the data source
+  // engine.
+  enum Type {
+    // The default value.
+    TYPE_UNSPECIFIED = 0;
+    // Any type.
+    TYPE_EMPTY = 1;
+    // Integer type.
+    TYPE_INTEGER = 2;
+    // String type.
+    TYPE_STRING = 3;
+    // Boolean type.
+    TYPE_BOOLEAN = 4;
+    // Any floating point decimal type.
+    TYPE_DECIMAL = 5;
+    // Timestamp date type.
+    TYPE_TIMESTAMP = 6;
+  }
+}
+
+// Condition describes the condition that must be validated by the network
+message Condition {
+  // comparator is the type of comparison to make on the value.
+  Operator operator = 1;
+  // value is used by the comparator.
+  string value = 2;
+  // Comparator describes the type of comparison.
+  enum Operator {
+    // The default value
+    OPERATOR_UNSPECIFIED = 0;
+    // Verify if the property values are strictly equal or not.
+    OPERATOR_EQUALS = 1;
+    // Verify if the data source data value is greater than the Condition value.
+    OPERATOR_GREATER_THAN = 2;
+    // Verify if the data source data value is greater than or equal to the Condition
+    // value.
+    OPERATOR_GREATER_THAN_OR_EQUAL = 3;
+    // Verify if the data source data value is less than the Condition value.
+    OPERATOR_LESS_THAN = 4;
+    // Verify if the data source data value is less or equal to than the Condition
+    // value.
+    OPERATOR_LESS_THAN_OR_EQUAL = 5;
+  }
+}

@@ -6,8 +6,7 @@ import "vega/vega.proto";
 import "vega/governance.proto";
 import "vega/markets.proto";
 import "vega/assets.proto";
-import "vega/oracles/v1/data.proto";
-import "vega/oracles/v1/spec.proto";
+import "vega/oracle.proto";
 import "vega/events/v1/events.proto";
 import "vega/commands/v1/validator_commands.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
@@ -17,7 +16,7 @@ option go_package = "code.vegaprotocol.io/vega/protos/data-node/api/v2";
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Vega data node APIs";
-    version: "0.55.0";
+    version: "v0.63.0+dev";
   }
   schemes: [HTTP, HTTPS]
   host: "lb.testnet.vega.xyz/datanode/rest"
@@ -35,7 +34,8 @@ service TradingDataService {
 
     // Info
     //
-    // Retrieve informations about this dataa
+    // Retrieves information about the data-node.
+    // Response contains a semver formatted version of the data node and the commit hash, from which the data-node was built,
     rpc Info(InfoRequest) returns (InfoResponse);
 
     // Order
@@ -64,10 +64,37 @@ service TradingDataService {
     // Subscribe to a stream of Positions
     rpc ObservePositions(ObservePositionsRequest) returns (stream ObservePositionsResponse);
 
-    // Balances
+    // LedgerEntries
     //
-    // Get an aggregated list of the changes in balances in a set of accounts over time
-    rpc GetBalanceHistory(GetBalanceHistoryRequest) returns (GetBalanceHistoryResponse) {}
+    // Get ledger entries by asset, market, party, account type, transfer type within the given date range.
+    // This query requests and sums number of the ledger entries of a given subset of accounts, specified via the 'filter' argument.
+    // It returns a timeseries (implemented as a list of AggregateLedgerEntry structs), with a row for every time
+    // the summed ledger entries of the set of specified accounts changes.
+    // Listed queries should be limited to a single party from each side only. If no or more than one parties are provided
+    // for sending and receiving accounts - the query returns error.
+    //
+    // Entries can be queried by:
+    //   - listing ledger entries with filtering on the sending account (market_id, asset_id, account_type)
+    //   - listing ledger entries with filtering on the receiving account (market_id, asset_id, account_type)
+    //   - listing ledger entries with filtering on the sending AND receiving account
+    //   - listing ledger entries with filtering on the transfer type (on top of above filters or as a standalone option)
+    rpc ListLedgerEntries(ListLedgerEntriesRequest) returns (ListLedgerEntriesResponse) {}
+
+    //  Balances
+    //
+    // `ListBalanceChanges` is for querying the change in account balances over a period of time.
+    //
+    // An account is defined a 4-tuple of (asset_id, type, party_id, market_id).
+    // - Every account has associated asset and type.
+    // - Certain account types (for example, the global reward pool) do not have an associated party.
+    //   These are denoted by the special party identifier 'network'
+    // - Certain account types do not have an associated market (for example general party accounts)
+    //   These are denoted by the special market identifier '' (the empty string)
+    //
+    // `ListBalanceChangesRequest` will return a list of
+    // `(vega_time, asset_id, account_type, party_id, market_id, balance)`
+    // With a row for each block at which a given account's balance changes.
+    rpc ListBalanceChanges(ListBalanceChangesRequest) returns (ListBalanceChangesResponse) {}
 
     // Market Data
     //
@@ -79,7 +106,7 @@ service TradingDataService {
     // Lists the latest market data for every market
     rpc ListLatestMarketData(ListLatestMarketDataRequest) returns (ListLatestMarketDataResponse);
 
-    // Market Detph
+    // Market Depth
     //
     // Get the latest market depth for a given market
     rpc GetLatestMarketDepth(GetLatestMarketDepthRequest) returns (GetLatestMarketDepthResponse);
@@ -126,13 +153,13 @@ service TradingDataService {
 
     // ERC20 add signer bundle
     //
-    // Get the signature bundle to add a particular validator to the signer list of the multisig contract
-    rpc GetERC20MultiSigSignerAddedBundles(GetERC20MultiSigSignerAddedBundlesRequest) returns (GetERC20MultiSigSignerAddedBundlesResponse);
+    // List the signature bundle to add a particular validator to the signer list of the multisig contract
+    rpc ListERC20MultiSigSignerAddedBundles(ListERC20MultiSigSignerAddedBundlesRequest) returns (ListERC20MultiSigSignerAddedBundlesResponse);
 
     // ERC20 remove signer bundle
     //
-    // Get the signatures bundle to remove a particular validator from signer list of the multisig contract
-    rpc GetERC20MultiSigSignerRemovedBundles(GetERC20MultiSigSignerRemovedBundlesRequest) returns (GetERC20MultiSigSignerRemovedBundlesResponse);
+    // List the signatures bundle to remove a particular validator from signer list of the multisig contract
+    rpc ListERC20MultiSigSignerRemovedBundles(ListERC20MultiSigSignerRemovedBundlesRequest) returns (ListERC20MultiSigSignerRemovedBundlesResponse);
 
     // ERC20 list asset bundle
     //
@@ -340,7 +367,7 @@ service TradingDataService {
     // Transfer Responses
     //
     // Subscribe to a stream of Transfer Responses
-    rpc ObserveTransferResponses(ObserveTransferResponsesRequest) returns (stream ObserveTransferResponsesResponse);
+    rpc ObserveLedgerMovements(ObserveLedgerMovementsRequest) returns (stream ObserveLedgerMovementsResponse);
 
     // Key Rotations list
     //
@@ -356,6 +383,50 @@ service TradingDataService {
     //
     // Get the current time of the network
     rpc GetVegaTime(GetVegaTimeRequest) returns (GetVegaTimeResponse);
+
+    // Protocol Upgrade status
+    rpc GetProtocolUpgradeStatus(GetProtocolUpgradeStatusRequest) returns (GetProtocolUpgradeStatusResponse);
+
+    // List protocol upgrades proposals, optionally filtering on status or approver.
+    rpc ListProtocolUpgradeProposals(ListProtocolUpgradeProposalsRequest) returns (ListProtocolUpgradeProposalsResponse);
+
+    // Decentralized History
+    //
+    // Decentralised History allows the data-node to reach out to peer nodes to fetch the most recent history, as well as
+    // older history if desired, such that it can quickly get itself up to the latest block height of the network and start
+    // to consume events for the latest block from the Vega core.
+    // See https://github.com/vegaprotocol/vega/tree/develop/datanode/dehistory/README.md for a full description of Decentralised History
+
+    // Get most recent decentralized history segment
+    //
+    // Get the networks most recently history segment
+    rpc GetMostRecentDeHistorySegment(GetMostRecentDeHistorySegmentRequest) returns (GetMostRecentDeHistorySegmentResponse);
+
+    // List all decentralized history segments
+    //
+    // List all history segments stored by this node
+    rpc ListAllDeHistorySegments(ListAllDeHistorySegmentsRequest) returns (ListAllDeHistorySegmentsResponse);
+
+    // Fetch decentralized history segment
+    //
+    // Fetch a history segment from another peer in the network
+    rpc FetchDeHistorySegment(FetchDeHistorySegmentRequest) returns (FetchDeHistorySegmentResponse);
+
+    // Get active decentralized history peer addresses
+    //
+    // List the addresses of all active decentralized history peers
+    rpc GetActiveDeHistoryPeerAddresses(GetActiveDeHistoryPeerAddressesRequest) returns (GetActiveDeHistoryPeerAddressesResponse);
+
+    // Copy history segment to file
+    //
+    // Copy history segment data to a target file
+    rpc CopyHistorySegmentToFile(CopyHistorySegmentToFileRequest) returns (CopyHistorySegmentToFileResponse);
+
+    // Ping
+    //
+    // Ping the datanode
+    rpc Ping(PingRequest) returns (PingResponse);
+
 }
 
 // -- Pagination --
@@ -390,6 +461,25 @@ message PageInfo {
 }
 
 // -- Accounts --
+// Represents an account for an asset on Vega for a particular owner or party
+message AccountBalance {
+    // Unique account identifier (used internally by Vega)
+    // string id = 1;
+    // The party that the account belongs to, special values include `network`, which represents the Vega network and is
+    // most commonly seen during liquidation of distressed trading positions
+    string owner = 2;
+    // Balance of the asset, the balance is an integer, for example `123456` is a correctly
+    // formatted price of `1.23456` assuming market configured to 5 decimal places
+    // and importantly balances cannot be negative
+    string balance = 3;
+    // Asset identifier for the account
+    string asset = 4;
+    // Market identifier for the account, if [`AccountType`](#vega.AccountType).`ACCOUNT_TYPE_GENERAL` this will be empty
+    string market_id = 5;
+    // The account type related to this account
+    vega.AccountType type = 6;
+}
+
 message ListAccountsRequest {
     // Limit the accounts considered according to the filter supplied
     AccountFilter filter = 1;
@@ -411,12 +501,12 @@ message AccountsConnection {
 
 message AccountEdge {
     // The actual account object
-    vega.Account account = 1;
+    AccountBalance node = 1;
     // A cursor which can be used to fetch further pages with reference to this account
     string cursor = 2;
 }
 
-// Request to subscribe to a stream of (Accounts)[#vega.Account]
+// Request to subscribe to a stream of (Accounts)[#AccountBalance]
 message ObserveAccountsRequest {
     // Market identifier
     string market_id = 1;
@@ -439,13 +529,13 @@ message ObserveAccountsResponse {
 
 // An 'initial image' snapshot containing current account balances - may be sent over several response messages
 message AccountSnapshotPage{
-    repeated vega.Account accounts = 1;
+    repeated AccountBalance accounts = 1;
     bool last_page = 2;
 }
 
 // A list of account updates in the last block
 message AccountUpdates{
-    repeated vega.Account accounts = 1;
+    repeated AccountBalance accounts = 1;
 }
 
 // -- Info --
@@ -598,6 +688,87 @@ message PositionUpdates{
     repeated vega.Position positions = 1;
 }
 
+// LedgerEntryFilter sets filters on returned set of ledger entries.
+// LedgerEntry objects can be filtered by asset_id, market_id, party_id for sending and receiving account, as well as on transfer types.
+message LedgerEntryFilter {
+    // close_on_account_filters is used to open/close the output set of entries under the AccountFrom/AccountTo values.
+    // If true -> the output set will contain entries which sending and receiving accounts
+    // all match the criteria given in the `AccountFilter` type.
+    // Otherwise will contain entries that have a match the settings in both accounts (sending or receiving) or in one of them.
+    bool close_on_account_filters = 1;
+    AccountFilter account_from_filter = 2;
+    AccountFilter account_to_filter = 3;
+    repeated vega.TransferType transfer_types = 5;
+}
+
+enum LedgerEntryField {
+    LEDGER_ENTRY_FIELD_UNSPECIFIED = 0;
+    LEDGER_ENTRY_FIELD_ACCOUNT_FROM_ID = 1;
+    LEDGER_ENTRY_FIELD_ACCOUNT_TO_ID = 2;
+    LEDGER_ENTRY_FIELD_TRANSFER_TYPE = 3;
+}
+
+message AggregatedLedgerEntries {
+    // Removing ID field as it is not used, there is no id for an aggregated ledger entry.
+    reserved 1;
+    // Timestamp to of block the result is referring to, in nanoseconds since the epoch
+    int64 timestamp = 2;
+    // The amount of ledger entries for the set of requested accounts at the time above
+    string quantity = 3;
+    // If filtering by transfer type, the transfer type
+    vega.TransferType transfer_type = 4;
+    // If filtering by asset, the asset ID
+    optional string asset_id = 5;
+    // The type of account sent from
+    vega.AccountType sender_account_type = 6;
+    // The type of account received to
+    vega.AccountType receiver_account_type = 7;
+    // If filtering by sender party, the party ID
+    optional string sender_party_id = 8;
+    // If filtering by receiver party, the party ID
+    optional string receiver_party_id = 9;
+    // If filtering by sender market, the market ID
+    optional string sender_market_id = 10;
+    // If filtering by receiver market, the market ID
+    optional string receiver_market_id = 11;
+}
+
+// -- LedgerEntries --
+message ListLedgerEntriesRequest {
+    // Limit the ledger entries considered according to the filter supplied
+    LedgerEntryFilter filter = 1;
+    optional Pagination pagination = 2;
+    optional DateRange date_range = 3;
+}
+
+message ListLedgerEntriesResponse {
+    AggregatedLedgerEntriesConnection ledger_entries = 1;
+}
+
+message AggregatedLedgerEntriesEdge {
+    AggregatedLedgerEntries node = 1;
+    string cursor = 2;
+}
+
+message AggregatedLedgerEntriesConnection {
+    repeated AggregatedLedgerEntriesEdge edges = 1;
+    PageInfo page_info = 2;
+}
+
+message ListBalanceChangesRequest{
+    // Limit the accounts considered according to the filter supplied
+    AccountFilter filter = 1;
+    // Pagination controls
+    optional Pagination pagination = 5;
+    // Date range over which to query
+    optional DateRange date_range = 6;
+}
+
+message ListBalanceChangesResponse {
+    AggregatedBalanceConnection balances = 1;
+}
+
+
 // -- Balances --
 message GetBalanceHistoryRequest {
     // Limit the accounts considered according to the filter supplied
@@ -649,8 +820,6 @@ message AggregatedBalance {
     int64 timestamp = 1;
     // The balance of the set of requested accounts at the time above
     string balance = 2;
-    // If grouping by account ID, the account ID
-    optional string account_id = 3;
     // If grouping by party, the party ID
     optional string party_id = 4;
     // If grouping by asset, the asset ID
@@ -658,7 +827,7 @@ message AggregatedBalance {
     // If grouping by market, the market ID
     optional string market_id = 6;
     // If grouping by account type, the account type
-    vega.AccountType account_type = 7;
+    optional vega.AccountType account_type = 7;
 }
 
 // -- Market Data --
@@ -903,11 +1072,13 @@ message CandleDataConnection {
 // -- Votes --
 // Request for Votes
 message ListVotesRequest {
-    // Party of which the votes are requested
-    string party_id = 1;
+  // Party of which the votes are requested
+  optional string party_id = 1;
+  // A proposal id for which top list proposal for
+  optional string proposal_id = 2;
 
-    // Optional pagination control
-    optional Pagination pagination = 2;
+  // Optional pagination control
+  optional Pagination pagination = 3;
 }
 
 // Response for Votes
@@ -937,7 +1108,7 @@ message ObserveVotesResponse {
 }
 
 // Request for the signature bundle to add a particular validator to the signer list of the multisig contract
-message GetERC20MultiSigSignerAddedBundlesRequest {
+message ListERC20MultiSigSignerAddedBundlesRequest {
 
     // The node id of the validator of which a signature bundle is required
     string node_id = 1;
@@ -953,7 +1124,7 @@ message GetERC20MultiSigSignerAddedBundlesRequest {
 }
 
 // Response for the signature bundle to add a particular validator to the signer list of the multisig contract
-message GetERC20MultiSigSignerAddedBundlesResponse {
+message ListERC20MultiSigSignerAddedBundlesResponse {
 
     // list of bundles for that validator, it may have been added multiple times if removed in between
     ERC20MultiSigSignerAddedConnection bundles = 1;
@@ -997,7 +1168,7 @@ message ERC20MultiSigSignerAddedBundle {
 }
 
 // Request for the signature bundle to remove a particular validator from the signer list of the multisig contract
-message GetERC20MultiSigSignerRemovedBundlesRequest {
+message ListERC20MultiSigSignerRemovedBundlesRequest {
     // The node id of the validator of which a signature bundle is required
     string node_id = 1;
 
@@ -1012,7 +1183,7 @@ message GetERC20MultiSigSignerRemovedBundlesRequest {
 }
 
 // Response for the signature bundle to remove a particular validator from the signer list of the multisig contract
-message GetERC20MultiSigSignerRemovedBundlesResponse {
+message ListERC20MultiSigSignerRemovedBundlesResponse {
     // list of signer bundles for that validator
     ERC20MultiSigSignerRemovedConnection bundles = 1;
 }
@@ -1188,8 +1359,8 @@ message GetOracleSpecRequest {
 
 // The response for a oracle spec
 message GetOracleSpecResponse {
-    // The oracle spec matching the ID.
-    oracles.v1.OracleSpec oracle_spec = 1 ;
+    // The external data spec matching the ID.
+    vega.OracleSpec oracle_spec = 1 ;
 }
 
 // The request to get all active oracle specs
@@ -1218,7 +1389,7 @@ message ListOracleDataResponse {
 }
 
 message OracleSpecEdge {
-    oracles.v1.OracleSpec node = 1;
+    vega.OracleSpec node = 1;
     string cursor = 2;
 }
 
@@ -1228,7 +1399,7 @@ message OracleSpecsConnection {
 }
 
 message OracleDataEdge {
-    oracles.v1.OracleData node = 1;
+    vega.OracleData node = 1;
     string cursor = 2;
 }
 
@@ -1279,7 +1450,7 @@ message ListPartiesRequest {
 }
 
 message ListPartiesResponse {
-    PartyConnection party = 1;
+    PartyConnection parties = 1;
 }
 
 message PartyEdge {
@@ -1674,12 +1845,12 @@ message GetEpochResponse {
 // -- Estimates --
 // Request to fetch the estimated fee if an order were to trade immediately
 message EstimateFeeRequest {
-    // Order to estimate fees for
-    // the following fields in the order are required:
     // MarketID (used to specify the fee factors)
-    // Price (the price at which the order could trade)
+  string market_id = 1;
+  // Price (the price at which the order could trade)
+  string price = 2;
     // Size (the size at which the order could eventually trade)
-    vega.Order order = 1;
+  uint64 size = 3;
 }
 
 // Response to a EstimateFeeRequest, containing the estimated fees for a given order
@@ -1690,8 +1861,12 @@ message EstimateFeeResponse {
 
 // Request to fetch the estimated MarginLevels if an order were to trade immediately
 message EstimateMarginRequest {
-    // Order to estimate fees for
-    vega.Order order = 1;
+  string market_id = 1;
+  string party_id = 2;
+  vega.Side side = 3;
+  vega.Order.Type type = 4;
+  uint64 size = 5;
+  string price = 6;
 }
 
 // Response to a EstimateMarginRequest, containing the estimated marginLevels for a given order
@@ -1814,10 +1989,10 @@ message ObserveEventBusResponse {
 }
 
 // -- Transfer Responses --
-message ObserveTransferResponsesRequest {}
+message ObserveLedgerMovementsRequest {}
 
-message ObserveTransferResponsesResponse {
-    vega.TransferResponse response = 1;
+message ObserveLedgerMovementsResponse {
+    vega.LedgerMovement ledger_movement = 1;
 }
 
 // -- Key Rotations --
@@ -1861,7 +2036,7 @@ message EthereumKeyRotationsConnection {
 }
 
 message EthereumKeyRotationEdge {
-    vega.events.v1.EthereumKeyRotation ethereum_key_rotation = 1;
+    vega.events.v1.EthereumKeyRotation node = 1;
     string cursor = 2;
 }
 
@@ -1885,4 +2060,104 @@ message DateRange {
     optional int64 start_timestamp = 1;
     // Optional end timestamp in nanoseconds past the epoch
     optional int64 end_timestamp = 2;
+}
+
+message GetProtocolUpgradeStatusRequest {}
+
+message GetProtocolUpgradeStatusResponse {
+    bool ready = 1;
+}
+
+// Request type for ListProtocolUpgradeProposals; fetches a paginated list of protocol upgrade proposals
+message ListProtocolUpgradeProposalsRequest {
+    optional vega.events.v1.ProtocolUpgradeProposalStatus status = 1;
+    optional string approved_by = 2;
+    optional Pagination pagination = 3;
+}
+
+// Reponse type from a ListProtocolUpgradeProposals RPC call; a paginated list of protocol upgrade proposals
+message ListProtocolUpgradeProposalsResponse {
+    ProtocolUpgradeProposalConnection protocol_upgrade_proposals = 1;
+}
+
+// A page of protocol upgrade proposals, with page information.
+message ProtocolUpgradeProposalConnection {
+    repeated ProtocolUpgradeProposalEdge edges = 1;
+    PageInfo page_info = 2;
+}
+
+// A protocol upgrade proposal, along with a cursor
+message ProtocolUpgradeProposalEdge {
+    vega.events.v1.ProtocolUpgradeEvent node = 1;
+    string cursor = 2;
+}
+
+// -- Decentralized History --
+// Decentralised History allows the data-node to reach out to peer nodes to fetch the most recent history, as well as
+// older history if desired, such that it can quickly get itself up to the latest block height of the network and start
+// to consume events for the latest block from the Vega core.
+// See https://github.com/vegaprotocol/vega/tree/develop/datanode/dehistory/README.md for a full description of Decentralised History
+
+// Describes a decentralized history segment
+message HistorySegment {
+    int64 from_height = 1;
+    int64 to_height = 2;
+    string chain_id = 3;
+    string history_segment_id = 4;
+    string previous_history_segment_id = 5;
+}
+
+// Request to get the most recent history segment
+message GetMostRecentDeHistorySegmentRequest {
+}
+
+// Get most recent history segment response
+message GetMostRecentDeHistorySegmentResponse {
+    HistorySegment segment = 1;
+}
+
+// Request to list all the nodes history segments
+message ListAllDeHistorySegmentsRequest {
+}
+
+// Response with a list of all the nodes history segments
+message ListAllDeHistorySegmentsResponse {
+    repeated HistorySegment segments = 1;
+}
+
+// Request to fetch a history segment from the network
+message FetchDeHistorySegmentRequest {
+    string history_segment_id  = 1;
+}
+
+// Response with details of the fetched history segment
+message FetchDeHistorySegmentResponse {
+    HistorySegment segment = 1;
+}
+
+// Request to get the addresses of active decentralized history peers
+message GetActiveDeHistoryPeerAddressesRequest {
+}
+
+// Response containing the addresses of active decentralized history peers
+message GetActiveDeHistoryPeerAddressesResponse {
+    repeated string ip_addresses = 1;
+}
+
+// Request to copy a history segment to a file
+message CopyHistorySegmentToFileRequest {
+    string history_segment_id  = 1;
+    string target_file  = 2;
+}
+
+// Response from copying a history segment to a file
+message CopyHistorySegmentToFileResponse {
+}
+
+// Request to ping the datanode
+message PingRequest {
+}
+
+// Ping response from the datanode
+message PingResponse {
 }

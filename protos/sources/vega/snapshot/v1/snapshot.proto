@@ -9,8 +9,8 @@ import "vega/assets.proto";
 import "vega/chain_events.proto";
 import "vega/governance.proto";
 import "vega/events/v1/events.proto";
-import "vega/commands/v1/validator_commands.proto";
 import "vega/checkpoint/v1/checkpoint.proto";
+import "vega/data/v1/data.proto";
 
 enum Format {
   // Default value, always invalid
@@ -89,8 +89,6 @@ message Payload {
     VoteSpamPolicy vote_spam_policy = 26;
     SimpleSpamPolicy simple_spam_policy = 27;
     Notary notary = 28;
-    ReplayProtection replay_protection = 29;
-    FutureState  future_state = 30;
     EventForwarder event_forwarder = 31;
     StakeVerifierDeposited stake_verifier_deposited = 32;
     StakeVerifierRemoved stake_verifier_removed = 33;
@@ -149,7 +147,7 @@ message OracleDataBatch {
 }
 
 message OracleData {
-  repeated string pub_keys = 1;
+  repeated vega.data.v1.Signer signers = 1;
   repeated OracleDataPair data = 2;
 }
 
@@ -160,7 +158,6 @@ message OracleDataPair {
 
 message Witness {
   repeated Resource resources = 1;
-  repeated string need_resend_resources = 2;
 }
 
 message Resource {
@@ -171,7 +168,7 @@ message Resource {
 }
 
 message EventForwarder {
-  repeated vega.commands.v1.ChainEvent acked_events = 1;
+  repeated string acked_events = 1;
 }
 
 message CollateralAccounts {
@@ -236,7 +233,7 @@ message BankingDeposits {
 }
 
 message BankingSeen {
-  repeated TxRef refs = 1;
+  repeated string refs = 1;
 }
 
 message BankingAssetActions {
@@ -244,7 +241,7 @@ message BankingAssetActions {
 }
 
 message BankingRecurringTransfers {
-  vega.checkpoint.v1.RecurringTransfers recurring_tranfers = 1;
+  vega.checkpoint.v1.RecurringTransfers recurring_transfers = 1;
 }
 
 message BankingScheduledTransfers {
@@ -430,7 +427,9 @@ message Market {
   string risk_factor_long = 15;
   bool risk_factor_consensus_reached = 16;
   FeeSplitter fee_splitter = 17;
-  string settlement_price = 18;
+  string settlement_data = 18;
+  int64 next_mark_to_market = 19;
+  string last_traded_price = 20;
 }
 
 message PeggedOrders {
@@ -574,23 +573,6 @@ message Notary {
   repeated NotarySigs notary_sigs = 1;
 }
 
-message ReplayProtection {
-  repeated TransactionAtHeight transactions = 1;
-  uint64 back_tol = 2;
-  uint64 forward_tol = 3;
-}
-
-message TransactionAtHeight {
-  string tx = 1;
-  uint64 height = 2;
-}
-
-message FutureState {
-  string market_id = 1;
-  string settlement_price = 2;
-  bool trading_terminated = 3;
-}
-
 message StakeVerifierDeposited {
   repeated StakeVerifierPending pending_deposited = 1;
 }
@@ -622,6 +604,7 @@ message PendingEthereumKeyRotation {
   string node_id = 2;
   string new_address = 3;
   string submitter = 4;
+  string old_address = 5;
 }
 
 message Topology {
@@ -631,6 +614,7 @@ message Topology {
   ValidatorPerformance validator_performance = 4;
   repeated PendingEthereumKeyRotation pending_ethereum_key_rotations = 5;
   ToplogySignatures signatures = 6;
+  repeated PendingEthereumKeyRotation unsolved_ethereum_key_rotations = 7;
 }
 
 
@@ -800,5 +784,5 @@ message AcceptedProtocolUpgradeProposal {
     // The block height at which to perform the upgrade
     uint64 upgrade_block_height = 1;
     // the release tag for the vega binary
-    string vega_release_tag = 2;   
+    string vega_release_tag = 2;
 }

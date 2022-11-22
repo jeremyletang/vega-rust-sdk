@@ -32,21 +32,26 @@ pub mod vega {
             include!(concat!(env!("OUT_DIR"), "/vega.api.v1.rs"));
         }
     }
+
+    pub mod data {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/vega.data.v1.rs"));
+        }
+    }
 }
 
 pub mod datanode {
     pub mod api {
-        pub mod v1 {
-            include!(concat!(env!("OUT_DIR"), "/datanode.api.v1.rs"));
-        }
         pub mod v2 {
             include!(concat!(env!("OUT_DIR"), "/datanode.api.v2.rs"));
         }
     }
 }
 
-pub mod oracles {
-    pub mod v1 {
-        include!(concat!(env!("OUT_DIR"), "/oracles.v1.rs"));
+pub mod blockexplorer {
+    pub mod api {
+        pub mod v1 {
+            include!(concat!(env!("OUT_DIR"), "/blockexplorer.api.v1.rs"));
+        }
     }
 }
