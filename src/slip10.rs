@@ -1,4 +1,3 @@
-use base58::ToBase58;
 use ed25519_compact::{KeyPair, Seed};
 use hmac::{Hmac, Mac, NewMac};
 use regex::Regex;
@@ -113,11 +112,6 @@ impl Node {
         out.extend_from_slice(&self.key);
         out.extend_from_slice(&self.chain_code);
         return out;
-    }
-
-    pub fn address(&self) -> String {
-        let (pkey, _) = self.keypair();
-        return pkey.bytes().to_base58();
     }
 
     pub fn derive(&self, i: u32) -> Result<Node, Error> {
