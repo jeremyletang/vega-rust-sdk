@@ -2,6 +2,8 @@ use std::{ffi::OsStr, path::PathBuf};
 use walkdir::WalkDir;
 
 fn main() {
+    std::env::set_var("PROTOC", protobuf_src::protoc());
+
     let protos_folder = "./protos/sources";
     let third_party_folder = "./protos/third_party";
     let mut files: Vec<PathBuf> = vec![];
