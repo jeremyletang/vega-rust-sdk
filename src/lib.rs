@@ -4,12 +4,12 @@ use errors::Error;
 use prost::Message;
 use protos::vega::{
     api::v1::{
-        core_service_client::CoreServiceClient, CheckTransactionRequest, LastBlockHeightRequest,
-        SubmitTransactionRequest,
+        core_service_client::CoreServiceClient, submit_raw_transaction_request,
+        CheckTransactionRequest, LastBlockHeightRequest, SubmitTransactionRequest,
     },
     commands::v1::{
         input_data::Command, transaction::From as From_, InputData, ProofOfWork, Signature,
-        Transaction,
+        Transaction, TxVersion,
     },
 };
 use rand::{thread_rng, Rng};
@@ -80,29 +80,29 @@ impl Transact {
             .last_block_height(LastBlockHeightRequest {})
             .await?;
 
-        let chain_id = res.get_ref().chain_id.clone();
-        let nonce = gen_nonce();
-        let block_height = res.get_ref().height;
-        let block_hash = res.get_ref().hash.clone();
-        let difficulty = res.get_ref().spam_pow_difficulty;
         let txid = random_hash();
-        let (pow_nonce, _) = pow::solve(&block_hash, &txid, difficulty as usize)?;
+
+        let (pow_nonce, _) = pow::solve(
+            &res.get_ref().hash,
+            &txid,
+            res.get_ref().spam_pow_difficulty as usize,
+        )?;
 
         let input_data = InputData {
-            nonce,
-            block_height,
+            nonce: gen_nonce(),
+            block_height: res.get_ref().height,
             command: Some(cmd.clone()),
         }
         .encode_to_vec();
 
-        let signature = hex::encode(
-            self.signer
-                .sign(&build_signable_message(&input_data, &chain_id)),
-        );
+        let signature = hex::encode(self.signer.sign(&build_signable_message(
+            &input_data,
+            &res.get_ref().chain_id,
+        )));
 
         return Ok(Transaction {
             from: Some(From_::PubKey(hex::encode(self.signer.pubkey()))),
-            version: 3,
+            version: TxVersion::V3.into(),
             input_data,
             signature: Some(Signature {
                 value: signature,
@@ -124,11 +124,11 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let res = self
+        let _ = self
             .client
             .submit_transaction(SubmitTransactionRequest {
                 tx: Some(tx),
-                r#type: 2,
+                r#type: submit_raw_transaction_request::Type::Sync.into(),
             })
             .await?;
         return Ok(());
@@ -142,7 +142,7 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let res = self
+        let _ = self
             .client
             .check_transaction(CheckTransactionRequest { tx: Some(tx) })
             .await?;
