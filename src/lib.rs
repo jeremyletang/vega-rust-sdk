@@ -81,7 +81,7 @@ impl Transact {
             .await?;
 
         let chain_id = res.get_ref().chain_id.clone();
-        let nonce = 1;
+        let nonce = gen_nonce();
         let block_height = res.get_ref().height;
         let block_hash = res.get_ref().hash.clone();
         let difficulty = res.get_ref().spam_pow_difficulty;
@@ -158,9 +158,10 @@ fn build_signable_message(input_data: &[u8], chain_id: &str) -> Vec<u8> {
     return out;
 }
 
-// func BundleInputDataForSigning(inputDataBytes []byte, chainID string) []byte {
-//   28    return append([]byte(fmt.Sprintf("%s%c", chainID, ChainIDDelimiter)), inputDataBytes...)
-//   29}
+fn gen_nonce() -> u64 {
+    let mut rng = rand::thread_rng();
+    return rng.gen_range(0..u64::MAX);
+}
 
 fn random_hash() -> String {
     let msg = thread_rng()
