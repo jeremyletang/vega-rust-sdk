@@ -1,4 +1,3 @@
-//use protos::vega::commands::v1::Transaction;
 use crypto::Signer;
 use errors::Error;
 use prost::Message;
