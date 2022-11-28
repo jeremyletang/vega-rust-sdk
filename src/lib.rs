@@ -21,14 +21,15 @@ pub mod protos;
 pub mod slip10;
 
 const CHAIN_ID_DELIMITER: char = 0 as char;
+const SIGNATURE_ALGORITHM: &str = "vega/ed25519";
 
-type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
+#[derive(Clone)]
 pub struct Transact {
     signer: Signer,
     client: CoreServiceClient<tonic::transport::Channel>,
 }
 
+#[derive(Clone, Debug)]
 pub enum Credentials<'s> {
     /// An hex encoded private key
     PrivateKey(&'s str),
@@ -38,6 +39,7 @@ pub enum Credentials<'s> {
     Mnemonic(&'s str, usize),
 }
 
+#[derive(Clone, Debug)]
 pub enum Payload {
     Command(Command),
     Transaction(Transaction),
@@ -59,7 +61,7 @@ impl Transact {
     pub async fn new<'s, D>(creds: Credentials<'s>, node_address: D) -> Result<Transact, Error>
     where
         D: std::convert::TryInto<tonic::transport::Endpoint>,
-        D::Error: Into<StdError>,
+        D::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
     {
         let signer = match creds {
             Credentials::PrivateKey(secret) => crypto::Signer::from_secret_key(secret)?,
@@ -105,7 +107,7 @@ impl Transact {
             input_data,
             signature: Some(Signature {
                 value: signature,
-                algo: "vega/ed25519".into(),
+                algo: SIGNATURE_ALGORITHM.into(),
                 version: 1,
             }),
             pow: Some(ProofOfWork {
@@ -146,6 +148,16 @@ impl Transact {
             .check_transaction(CheckTransactionRequest { tx: Some(tx) })
             .await?;
         return Ok(());
+    }
+
+    /// The public key hex encoded
+    pub fn public_key(&self) -> String {
+        return hex::encode(self.signer.pubkey());
+    }
+
+    /// The secret key hex encoded
+    pub fn secret_key(&self) -> String {
+        return hex::encode(self.signer.secret());
     }
 }
 
