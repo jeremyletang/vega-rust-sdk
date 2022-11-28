@@ -57,6 +57,25 @@ impl From<Transaction> for Payload {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CheckTxResult {
+    pub success: bool,
+    pub code: u32,
+    pub error: Option<String>,
+    pub log: Option<String>,
+    pub info: Option<String>,
+    pub gas_wanted: i64,
+    pub gas_used: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct SendTxResult {
+    pub success: bool,
+    pub code: u32,
+    pub error: Option<String>,
+    pub hash: String,
+}
+
 impl Transact {
     pub async fn new<'s, D>(creds: Credentials<'s>, node_address: D) -> Result<Transact, Error>
     where
@@ -117,7 +136,7 @@ impl Transact {
         });
     }
 
-    pub async fn send<P>(&mut self, p: P) -> Result<(), Error>
+    pub async fn send<P>(&mut self, p: P) -> Result<SendTxResult, Error>
     where
         P: Into<Payload>,
     {
@@ -125,17 +144,28 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let _ = self
+        let resp = self
             .client
             .submit_transaction(SubmitTransactionRequest {
                 tx: Some(tx),
                 r#type: submit_raw_transaction_request::Type::Sync.into(),
             })
             .await?;
-        return Ok(());
+
+        let err = match resp.get_ref().success {
+            true => None,
+            false => Some(resp.get_ref().data.to_string()),
+        };
+
+        return Ok(SendTxResult {
+            success: resp.get_ref().success,
+            hash: resp.get_ref().tx_hash.clone(),
+            code: resp.get_ref().code,
+            error: err,
+        });
     }
 
-    pub async fn check<P>(&mut self, p: P) -> Result<(), Error>
+    pub async fn check<P>(&mut self, p: P) -> Result<CheckTxResult, Error>
     where
         P: Into<Payload>,
     {
@@ -143,11 +173,35 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let _ = self
+        let resp = self
             .client
             .check_transaction(CheckTransactionRequest { tx: Some(tx) })
             .await?;
-        return Ok(());
+
+        let err = match resp.get_ref().success {
+            true => None,
+            false => Some(resp.get_ref().data.to_string()),
+        };
+
+        let info = match resp.get_ref().info.is_empty() {
+            true => None,
+            false => Some(resp.get_ref().info.to_string()),
+        };
+
+        let log = match resp.get_ref().log.is_empty() {
+            true => None,
+            false => Some(resp.get_ref().log.to_string()),
+        };
+
+        return Ok(CheckTxResult {
+            success: resp.get_ref().success,
+            code: resp.get_ref().code,
+            gas_used: resp.get_ref().gas_used,
+            gas_wanted: resp.get_ref().gas_wanted,
+            error: err,
+            info: info,
+            log: log,
+        });
     }
 
     /// The public key hex encoded
