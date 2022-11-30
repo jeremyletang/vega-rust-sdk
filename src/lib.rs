@@ -21,14 +21,15 @@ pub mod protos;
 pub mod slip10;
 
 const CHAIN_ID_DELIMITER: char = 0 as char;
+const SIGNATURE_ALGORITHM: &str = "vega/ed25519";
 
-type StdError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
+#[derive(Clone)]
 pub struct Transact {
     signer: Signer,
     client: CoreServiceClient<tonic::transport::Channel>,
 }
 
+#[derive(Clone, Debug)]
 pub enum Credentials<'s> {
     /// An hex encoded private key
     PrivateKey(&'s str),
@@ -38,6 +39,7 @@ pub enum Credentials<'s> {
     Mnemonic(&'s str, usize),
 }
 
+#[derive(Clone, Debug)]
 pub enum Payload {
     Command(Command),
     Transaction(Transaction),
@@ -55,11 +57,30 @@ impl From<Transaction> for Payload {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CheckTxResult {
+    pub success: bool,
+    pub code: u32,
+    pub error: Option<String>,
+    pub log: Option<String>,
+    pub info: Option<String>,
+    pub gas_wanted: i64,
+    pub gas_used: i64,
+}
+
+#[derive(Clone, Debug)]
+pub struct SendTxResult {
+    pub success: bool,
+    pub code: u32,
+    pub error: Option<String>,
+    pub hash: String,
+}
+
 impl Transact {
     pub async fn new<'s, D>(creds: Credentials<'s>, node_address: D) -> Result<Transact, Error>
     where
         D: std::convert::TryInto<tonic::transport::Endpoint>,
-        D::Error: Into<StdError>,
+        D::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
     {
         let signer = match creds {
             Credentials::PrivateKey(secret) => crypto::Signer::from_secret_key(secret)?,
@@ -105,7 +126,7 @@ impl Transact {
             input_data,
             signature: Some(Signature {
                 value: signature,
-                algo: "vega/ed25519".into(),
+                algo: SIGNATURE_ALGORITHM.into(),
                 version: 1,
             }),
             pow: Some(ProofOfWork {
@@ -115,7 +136,7 @@ impl Transact {
         });
     }
 
-    pub async fn send<P>(&mut self, p: P) -> Result<(), Error>
+    pub async fn send<P>(&mut self, p: P) -> Result<SendTxResult, Error>
     where
         P: Into<Payload>,
     {
@@ -123,17 +144,28 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let _ = self
+        let resp = self
             .client
             .submit_transaction(SubmitTransactionRequest {
                 tx: Some(tx),
                 r#type: submit_raw_transaction_request::Type::Sync.into(),
             })
             .await?;
-        return Ok(());
+
+        let err = match resp.get_ref().success {
+            true => None,
+            false => Some(resp.get_ref().data.to_string()),
+        };
+
+        return Ok(SendTxResult {
+            success: resp.get_ref().success,
+            hash: resp.get_ref().tx_hash.clone(),
+            code: resp.get_ref().code,
+            error: err,
+        });
     }
 
-    pub async fn check<P>(&mut self, p: P) -> Result<(), Error>
+    pub async fn check<P>(&mut self, p: P) -> Result<CheckTxResult, Error>
     where
         P: Into<Payload>,
     {
@@ -141,11 +173,45 @@ impl Transact {
             Payload::Command(c) => self.sign(&c).await?,
             Payload::Transaction(tx) => tx,
         };
-        let _ = self
+        let resp = self
             .client
             .check_transaction(CheckTransactionRequest { tx: Some(tx) })
             .await?;
-        return Ok(());
+
+        let err = match resp.get_ref().success {
+            true => None,
+            false => Some(resp.get_ref().data.to_string()),
+        };
+
+        let info = match resp.get_ref().info.is_empty() {
+            true => None,
+            false => Some(resp.get_ref().info.to_string()),
+        };
+
+        let log = match resp.get_ref().log.is_empty() {
+            true => None,
+            false => Some(resp.get_ref().log.to_string()),
+        };
+
+        return Ok(CheckTxResult {
+            success: resp.get_ref().success,
+            code: resp.get_ref().code,
+            gas_used: resp.get_ref().gas_used,
+            gas_wanted: resp.get_ref().gas_wanted,
+            error: err,
+            info: info,
+            log: log,
+        });
+    }
+
+    /// The public key hex encoded
+    pub fn public_key(&self) -> String {
+        return hex::encode(self.signer.pubkey());
+    }
+
+    /// The secret key hex encoded
+    pub fn secret_key(&self) -> String {
+        return hex::encode(self.signer.secret());
     }
 }
 

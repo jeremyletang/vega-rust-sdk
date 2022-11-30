@@ -24,7 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("{:?}", tx);
 
-    t.send(tx).await?;
+    let res = t.send(tx).await?;
+
+    println!("{:?}", res);
 
     return Ok(());
 }
