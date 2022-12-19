@@ -33,10 +33,10 @@ pub fn solve(block_hash: &str, tx_id: &str, difficulty: usize) -> Result<(u64, V
 }
 
 fn count_leading_zeroes(h: &[u8]) -> usize {
-    match h.len() {
-        0 => 0,
-        _ => match zeroes(h[0]) {
-            8 => 8 + count_leading_zeroes(&h[1..]),
+    match h {
+        [] => 0,
+        [head, tail @ ..] => match zeroes(*head) {
+            8 => 8 + count_leading_zeroes(tail),
             n => n,
         },
     }

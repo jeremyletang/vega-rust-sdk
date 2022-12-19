@@ -11,7 +11,7 @@ option go_package = "code.vegaprotocol.io/vega/protos/blockexplorer/api/v1";
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Vega block explorer APIs";
-    version: "v0.59.0";
+    version: "v0.65.0+dev";
   }
   schemes: [HTTP, HTTPS]
   host: "lb.testnet.vega.xyz"
@@ -27,7 +27,23 @@ service BlockExplorerService {
   //
   // List transactions from the Vega blockchain
   rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {}
- }
+
+  // Info
+  //
+  // Retrieves information about the block explorer.
+  // Response contains a semver formatted version of the data node and the commit hash, from which the block explorer was built,
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
+
+// node info
+message InfoRequest {}
+
+message InfoResponse {
+    // A semver formatted version of the data node
+    string version = 1;
+    // The commit hash from which the data-node was built
+    string commit_hash = 2;
+}
 
 message GetTransactionRequest {
   // The hash of the transaction
@@ -74,4 +90,7 @@ message Transaction {
   vega.commands.v1.InputData command = 8;
   // Submitter's signature of transaction
   vega.commands.v1.Signature signature = 9;
+  // An optional error happening when processing / checking the transaction
+  // Should be set if error code is not 0
+  optional string error = 10;
 }
