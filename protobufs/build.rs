@@ -4,8 +4,8 @@ use walkdir::WalkDir;
 fn main() {
     std::env::set_var("PROTOC", protobuf_src::protoc());
 
-    let protos_folder = "./protos/sources";
-    let third_party_folder = "./protos/third_party";
+    let protos_folder = "./sources";
+    let third_party_folder = "./third_party";
     let mut files: Vec<PathBuf> = vec![];
 
     for entry in WalkDir::new(protos_folder) {

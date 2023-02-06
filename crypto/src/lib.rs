@@ -1,7 +1,9 @@
 use crypto::Signer;
 use errors::Error;
 use prost::Message;
-use protos::vega::{
+use rand::{thread_rng, Rng};
+use sha3::{Digest, Sha3_256};
+use vega_protobufs::vega::{
     api::v1::{
         core_service_client::CoreServiceClient, submit_raw_transaction_request,
         CheckTransactionRequest, LastBlockHeightRequest, SubmitTransactionRequest,
@@ -11,13 +13,10 @@ use protos::vega::{
         Transaction, TxVersion,
     },
 };
-use rand::{thread_rng, Rng};
-use sha3::{Digest, Sha3_256};
 
 mod crypto;
 mod errors;
 pub mod pow;
-pub mod protos;
 pub mod slip10;
 
 const CHAIN_ID_DELIMITER: char = 0 as char;
