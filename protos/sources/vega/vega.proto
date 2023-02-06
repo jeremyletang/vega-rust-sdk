@@ -473,9 +473,9 @@ message MarketDepthUpdate {
   repeated PriceLevel buy = 2;
   // Collection of updated price levels for the sell side of the book
   repeated PriceLevel sell = 3;
-  // Sequence number for the market depth update data returned. It is increasing but not monotonic.
+  // Sequence number for the market depth update data returned. It is increasing but not monotonic
   uint64 sequence_number = 4;
-  // Sequence number of of the previous market depth update, for checking there are no gaps.
+  // Sequence number of the previous market depth update, for checking there are no gaps
   uint64 previous_sequence_number = 5;
 }
 
@@ -554,6 +554,8 @@ message Deposit {
 
 // A withdrawal from the Vega network
 message Withdrawal {
+  reserved 7;
+
   // The status of the withdrawal
   enum Status {
     // Default value, always invalid
@@ -580,8 +582,6 @@ message Withdrawal {
   // The reference which is used by the foreign chain
   // to refer to this withdrawal
   string ref = 6;
-  // The time until when the withdrawal is valid
-  int64 expiry = 7;
   // The hash of the foreign chain for this transaction
   string tx_hash = 8;
   // Timestamp for when the network started to process this withdrawal
@@ -825,6 +825,10 @@ message LedgerEntry {
   TransferType type = 4;
   // Timestamps
   int64 timestamp = 5;
+  // Sender account balance after the transfer
+  string from_account_balance = 6;
+  // Receiver account balance after the transfer
+  string to_account_balance = 7;
 }
 
 // Represents the balance for an account during a transfer
@@ -936,7 +940,8 @@ message LiquidityProviderFeeShare {
   string equity_like_share = 2;
   // The average entry valuation of the liquidity provider for the market
   string average_entry_valuation = 3;
-
+  // The average liquidity score
+  string average_score = 4;
 }
 
 // Represents a list of valid (at the current timestamp) price ranges per associated trigger
@@ -971,18 +976,16 @@ message NetworkParameter {
 
 // Network limits, defined in the genesis file
 message NetworkLimits {
+  reserved 3, 6;
+
   // Are market proposals allowed at this point in time
   bool can_propose_market = 1;
   // Are asset proposals allowed at this point in time
   bool can_propose_asset = 2;
-  // True once block count > bootstrapBlockCount
-  bool bootstrap_finished = 3;
   // Are market proposals enabled on this chain
   bool propose_market_enabled = 4;
   // Are asset proposals enabled on this chain
   bool propose_asset_enabled = 5;
-  // How many blocks before the chain comes out of bootstrap mode
-  uint32 bootstrap_block_count = 6;
   // True once the genesis file is loaded
   bool genesis_loaded = 7;
   // The date/timestamp in unix nanoseconds at which market proposals will be enabled (0 indicates not set)
@@ -1045,7 +1048,7 @@ message LiquidityProvision {
   string market_id = 5;
   // Specified as a unitless number that represents the amount of settlement asset of the market
   string commitment_amount = 6;
-  // Nominated liquidity fee factor, which is an input to the calculation of taker fees on the market, as per seeting fees and rewarding liquidity providers
+  // Nominated liquidity fee factor, which is an input to the calculation of taker fees on the market, as per setting fees and rewarding liquidity providers
   string fee = 7;
   // A set of liquidity sell orders to meet the liquidity provision obligation
   repeated LiquidityOrderReference sells = 8;
@@ -1077,7 +1080,7 @@ message EthereumConfig {
   EthereumContractConfig staking_bridge_contract = 5;
   // Contract configuration of the token vesting contract for this Ethereum network.
   EthereumContractConfig token_vesting_contract = 6;
-  // Contract configuration of the multisig controld contract for this Ethereum network.
+  // Contract configuration of the multisig control contract for this Ethereum network.
   EthereumContractConfig  multisig_control_contract = 7;
 }
 
@@ -1292,6 +1295,16 @@ message RewardSummary {
   // Total amount of rewards for the asset
   string amount = 3;
 }
+
+// Details for rewards for a combination of asset, market, and reward type in a given epoch
+message EpochRewardSummary {
+  uint64 epoch = 1;
+  string asset_id = 2;
+  string market_id = 3;
+  string reward_type = 4;
+  string amount = 5;
+}
+
 
 message StateValueProposal {
   // state variable identifier
