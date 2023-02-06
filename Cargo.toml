@@ -1,2 +1,6 @@
 [workspace]
-members = ["protobufs", "wallet_client"]
+members = [
+  "protobufs",
+  "wallet_client",
+  "crypto"
+]
