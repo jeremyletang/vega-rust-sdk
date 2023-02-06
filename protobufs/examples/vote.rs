@@ -1,5 +1,5 @@
-use vega_rust_sdk::protos::vega::commands::v1::{input_data::Command, VoteSubmission};
-use vega_rust_sdk::{Credentials, Transact};
+use vega_protobufs::protos::vega::commands::v1::{input_data::Command, VoteSubmission};
+use vega_protobufs::{Credentials, Transact};
 
 // const MNEMONIC: &str = "another deal useless giraffe quarter glimpse blur civil reflect jelly quit endorse engage slender energy scare ask suggest toe spirit leaf seed unveil million";
 // const DERIVATIONS: usize = 42;
