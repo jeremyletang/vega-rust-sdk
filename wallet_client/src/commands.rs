@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// The total amount of commands in the batch across all three lists of
 /// instructions is restricted by the following network parameter:
 /// "spam.protection.max.batchSize"
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BatchMarketInstructions {
     /// A list of order cancellations to be processed sequentially
@@ -21,7 +21,7 @@ pub struct BatchMarketInstructions {
 }
 
 /// Time In Force for an order
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TimeInForce {
     /// Default value for TimeInForce, can be valid for an amend
@@ -53,7 +53,7 @@ pub enum TimeInForce {
 }
 
 /// Type values for an order
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum OrderType {
     /// Default value, always invalid
@@ -87,7 +87,7 @@ pub enum Side {
 
 /// A pegged reference defines which price point a pegged order is linked to - meaning
 /// the price for a pegged order is calculated from the value of the reference price point
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PeggedReference {
     /// Default value for PeggedReference, no reference given
@@ -106,7 +106,7 @@ pub enum PeggedReference {
 
 /// Pegged orders are limit orders where the price is specified in the form REFERENCE +/- OFFSET
 /// They can be used for any limit order that is valid during continuous trading
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PeggedOrder {
     /// The price point the order is linked to
@@ -116,7 +116,7 @@ pub struct PeggedOrder {
 }
 
 /// An order submission is a request to submit or create a new order on Vega
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderSubmission {
     /// Market identifier for the order, required field
@@ -147,7 +147,7 @@ pub struct OrderSubmission {
     pub pegged_order: Option<PeggedOrder>,
 }
 /// An order cancellation is a request to cancel an existing order on Vega
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderCancellation {
     /// Unique identifier for the order (set by the system after consensus), required field
@@ -158,7 +158,7 @@ pub struct OrderCancellation {
 /// An order amendment is a request to amend or update an existing order on Vega
 ///
 /// The `orderID`, `partyID` and `marketID` fields are used for looking up the order only and cannot be amended by this command
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderAmendment {
     /// Order identifier, this is required to find the order and will not be updated, required field
