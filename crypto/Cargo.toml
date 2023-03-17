@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bip39 = {version = "1.0.1", features = ["rand"] }
+bip39 = {version = "2.0.0", features = ["rand"] }
 ed25519-compact = "2.0.2"
 hex = "0.4.3"
 hmac = "0.11.0"
