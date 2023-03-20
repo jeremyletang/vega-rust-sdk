@@ -15,7 +15,7 @@ use vega_protobufs::vega::{
 };
 
 mod crypto;
-mod errors;
+pub mod errors;
 pub mod pow;
 pub mod slip10;
 
