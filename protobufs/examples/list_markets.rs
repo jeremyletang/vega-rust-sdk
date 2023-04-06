@@ -9,7 +9,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut client = TradingDataServiceClient::connect(NODE_ADDRESS).await?;
 
     let resp = client
-        .list_markets(ListMarketsRequest { pagination: None })
+        .list_markets(ListMarketsRequest {
+            pagination: None,
+            include_settled: Some(false),
+        })
         .await?;
 
     for mkt in resp.get_ref().markets.as_ref().unwrap().edges.iter() {
