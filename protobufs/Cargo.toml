@@ -3,6 +3,9 @@ name = "vega_protobufs"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+doctest = false
+
 [dependencies]
 prost = "0.11.8"
 tonic = "0.8.2"

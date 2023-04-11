@@ -29,6 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         side: Side::Sell.into(),
         time_in_force: TimeInForce::Gtc.into(),
         r#type: Type::Limit.into(),
+        reduce_only: false,
+        post_only: false,
     });
 
     let tx = t.sign(&order).await?;
