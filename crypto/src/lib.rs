@@ -111,6 +111,7 @@ impl Transact {
             nonce: gen_nonce(),
             block_height: res.get_ref().height,
             command: Some(cmd.clone()),
+            good_for_blocks: 50,
         }
         .encode_to_vec();
 
