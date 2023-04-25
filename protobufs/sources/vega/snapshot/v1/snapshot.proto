@@ -133,16 +133,16 @@ message LiquidityTarget {
   TimestampedOpenInterest max_open_interests = 6;
 }
 
-message LiquidityPriceProbabilityPair {
-  string price = 1;
+message LiquidityOffsetProbabilityPair {
+  uint32 offset = 1;
   string probability = 2;
 }
 
 message LiquiditySupplied {
   string market_id = 1;
   bool consensus_reached = 2;
-  repeated LiquidityPriceProbabilityPair bid_cache = 3;
-  repeated LiquidityPriceProbabilityPair ask_cache = 4;
+  repeated LiquidityOffsetProbabilityPair bid_cache = 3;
+  repeated LiquidityOffsetProbabilityPair ask_cache = 4;
 }
 
 message OracleDataBatch {
@@ -626,7 +626,7 @@ message Topology {
 
 message ToplogySignatures {
   repeated PendingERC20MultisigControlSignature pending_signatures = 1;
-  repeated string issued_signatures = 2;
+  repeated IssuedERC20MultisigControlSignature issued_signatures = 2;
 }
 
 message PendingERC20MultisigControlSignature {
@@ -635,6 +635,12 @@ message PendingERC20MultisigControlSignature {
   string nonce = 3;
   uint64 epoch_seq = 4;
   bool added = 5;
+}
+
+message IssuedERC20MultisigControlSignature {
+  string resource_id = 1;
+  string ethereum_address = 2;
+  string submitter_address = 3;
 }
 
 message ValidatorState {
@@ -674,19 +680,19 @@ message LiquidityParameters {
   string max_fee = 1;
   string max_shape_size = 2;
   string stake_to_obligation_factor = 3;
-  // Required for key generation
+  // Market ID these liquidity parameters apply to. Required for key generation
   string market_id = 4;
 }
 
 message LiquidityPendingProvisions {
   repeated string pending_provisions = 1;
-  // Required for key generation
+  // Market ID these liquidity provisions apply to. Required for key generation
   string market_id = 2;
 }
 
 message LiquidityPartiesLiquidityOrders {
   repeated PartyOrders party_orders = 1;
-  // Required for key generation
+  // Market ID these liquidity orders apply to. Required for key generation
   string market_id = 2;
 }
 
@@ -697,13 +703,13 @@ message PartyOrders {
 
 message LiquidityPartiesOrders {
   repeated PartyOrders party_orders = 1;
-  // Required for key generation
+  // Market ID these orders apply to. Required for key generation
   string market_id = 2;
 }
 
 message LiquidityProvisions {
   repeated vega.LiquidityProvision liquidity_provisions = 1;
-  // Required for key generation
+  // Market ID these provisions apply to. Required for key generation
   string market_id = 2;
 }
 

@@ -17,7 +17,7 @@ option go_package = "code.vegaprotocol.io/vega/protos/data-node/api/v2";
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "Vega data node APIs";
-    version: "v0.71.0+dev";
+    version: "v0.71.1";
   }
   schemes: [
     HTTP,
@@ -113,18 +113,17 @@ service TradingDataService {
 
   // List ledger entries
   //
-  // Get a list of ledger entries by asset, market, party, account type and transfer type within the given date range.
+  // Get a list of ledger entries within the given date range.
   // This query requests and sums the number of ledger entries from a given subset of accounts, specified via the 'filter' argument.
   // It returns a time series - implemented as a list of AggregateLedgerEntry structs - with a row for every time
   // the summed ledger entries of the set of specified accounts changes.
-  // Listed entries should be limited to a single party from each side only. If zero or more than one party is provided
-  // for each of the sides - sending and receiving accounts, the query returns an error.
+  // Each account filter must contain no more than one party ID.
   //
-  // Entries can be queried by:
-  //   - listing ledger entries with filtering on the sending account (market ID, asset ID, account type)
-  //   - listing ledger entries with filtering on the receiving account (market ID, asset ID, account type)
-  //   - listing ledger entries with filtering on the sending AND receiving account
-  //   - listing ledger entries with filtering on the transfer type either in addition to the above filters or as a standalone option
+  // Entries can be filtered by:
+  //   - the sending account (market ID, asset ID, account type)
+  //   - receiving account (market ID, asset ID, account type)
+  //   - sending AND receiving account
+  //   - transfer type either in addition to the above filters or as a standalone option
   rpc ListLedgerEntries(ListLedgerEntriesRequest) returns (ListLedgerEntriesResponse) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Ledger entries"};
   }
@@ -137,7 +136,9 @@ service TradingDataService {
   // Ledger entries can be exported by:
   //   - export ledger entries for a single party for a given asset within a given time range
   //   - export ledger entries for a single party for a given asset for all times
-  rpc ExportLedgerEntries(ExportLedgerEntriesRequest) returns (ExportLedgerEntriesResponse) {
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  rpc ExportLedgerEntries(ExportLedgerEntriesRequest) returns (stream google.api.HttpBody) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Ledger entries"};
   }
 
@@ -385,14 +386,19 @@ service TradingDataService {
 
   // List reward summaries
   //
-  // Get a list of reward summaries that match the provided criteria. If no filter is provided, all reward summaries will be returned.
+  // Get a list of reward summaries where the reward amount is the total rewards received over all epochs
+  // per party ID and asset ID.
+  // Request parameters are optional party ID and asset ID.
+  // If no data is provided, all reward summaries will be returned grouped by party and asset ID.
   rpc ListRewardSummaries(ListRewardSummariesRequest) returns (ListRewardSummariesResponse) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Rewards"};
   }
 
   // List epoch reward summaries
   //
-  // Get a list of reward summaries by epoch.
+  // Get a list of reward summaries by epoch for a given range of epochs.
+  // The result is filtered by list of asset IDs, market IDs and starting and ending epochs, for which to return rewards.
+  // If no data is provided, all reward summaries will be returned, grouped by epochs, market IDs, asset IDs and reward type.
   rpc ListEpochRewardSummaries(ListEpochRewardSummariesRequest) returns (ListEpochRewardSummariesResponse) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Rewards"};
   }
@@ -531,6 +537,14 @@ service TradingDataService {
   // Estimate the margin that would be required for submitting this order
   rpc EstimateMargin(EstimateMarginRequest) returns (EstimateMarginResponse) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Orders"};
+  }
+
+  // Estimate position
+  //
+  // Estimate the margin that would be required for maintaining the specified position.
+  // If the optional collateral available argument is supplied, the response also contains the estimate of the liquidation price.
+  rpc EstimatePosition(EstimatePositionRequest) returns (EstimatePositionResponse) {
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Positions"};
   }
 
   // List network parameters
@@ -702,7 +716,7 @@ service TradingDataService {
   // matching the NULL parameter string is quoted.
   //
   // For example, with the default settings, a NULL is written as an unquoted empty string,
-  // while an empty string data value is written with double quotes ("").
+  // while an empty string data value is written with double quotes.
   //
   // Note that CSV files produced may contain quoted values containing embedded carriage returns and line feeds.
   // Thus the files are not strictly one line per table row like text-format files.
@@ -735,6 +749,7 @@ service TradingDataService {
   //
   // It is worth noting that the schema will not change within a single network history segment.
   // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
   rpc ExportNetworkHistory(ExportNetworkHistoryRequest) returns (stream google.api.HttpBody) {
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {tags: "Network history"};
   }
@@ -749,11 +764,39 @@ service TradingDataService {
 
 // -- Pagination --
 
-// Cursor information for cursor based pagination requests
+// All data returned from the API is ordered in a well-defined manner.
+// The specific columns and the order in which the sorting is performed
+// depend on the API endpoint being called. However, the primary sorting
+// column is usually the timestamp of the block in which the data was last updated.
+//
+// To prevent excessively large response messages and to avoid overloading
+// database resources, the API employs a cursor-based pagination mechanism.
+//
+// This Pagination message can be optionally provided as part of the request to specify:
+// - The starting point within the total result set for beginning the page
+// - The size of the returned page
+// - The ordering of the data within that page
+//
+// If no Pagination message is provided, the API will return the first page of
+// data using the default page size. The default page size is 1000.
+//
+// To retrieve subsequent pages, the caller must examine the PageInfo structure
+// returned in the response to find a cursor string that uniquely identifies the
+// last row of that page. This cursor should then be passed in the 'after' field
+// of the Pagination message in a subsequent request.
+//
+// For paging backward, take the cursor for the first row of the page from PageInfo
+// and pass it in the 'before' field of the Pagination message.
+//
+// Pagination message that uses both first/after and last/before is considered invalid.
 message Pagination {
+  // Number of records to be returned that sort greater than row identified by cursor supplied in 'after'.
   optional int32 first = 1;
+  // If paging forwards, the cursor string for the last row of the previous page.
   optional string after = 2;
+  // Number of records to be returned that sort less than row identified by cursor supplied in 'before'.
   optional int32 last = 3;
+  // If paging forwards, the cursor string for the first row of the previous page.
   optional string before = 4;
   // Newest records first, older records last, default is true.
   optional bool newest_first = 5;
@@ -825,11 +868,11 @@ message AccountEdge {
 
 // Request that is sent when getting a subscription to a stream of accounts
 message ObserveAccountsRequest {
-  // Market ID.
+  // Market ID to filter accounts by. If empty, no markets will be filtered.
   string market_id = 1;
-  // Party ID.
+  // Party ID to filter accounts by. If empty, no parties will be filtered.
   string party_id = 2;
-  // Asset ID.
+  // Asset ID to filter accounts by. If empty, no assets will be filtered.
   string asset = 3;
   // Account type to subscribe to, required field.
   vega.AccountType type = 4;
@@ -876,9 +919,8 @@ message InfoResponse {
 
 // Request that is sent when executing the query for getting a single order
 message GetOrderRequest {
-  // Order ID.
+  // Order ID to retrieve order information for.
   string order_id = 1 [(google.api.field_behavior) = REQUIRED];
-
   // Optional version of the order.
   optional int32 version = 2;
 }
@@ -927,7 +969,7 @@ message ListOrdersResponse {
 
 // Request that is sent when listing possible order versions
 message ListOrderVersionsRequest {
-  // Order ID as string.
+  // Order ID to list versions for.
   string order_id = 1 [(google.api.field_behavior) = REQUIRED];
 
   // Optional pagination control.
@@ -944,15 +986,13 @@ message ListOrderVersionsResponse {
 //
 // Request fields market ID and party ID are both optional filters:
 // If omitted all orders, for all parties on all markets will be returned on the stream
-// If a market ID is provided, the orders from that market will be returned on the stream
-// If a party ID is provided, the orders from that party will be returned on the stream
 // Both filters can be combined
 message ObserveOrdersRequest {
-  // Market ID.
+  // Market ID to filter for. If empty, no markets will be filtered.
   repeated string market_ids = 1;
-  // Party ID.
+  // Party ID to filter for. If empty, no parties will be filtered.
   repeated string party_ids = 2;
-  // Exclude liquidity.
+  // Indicates whether liquidity orders should be excluded from the stream.
   optional bool exclude_liquidity = 3;
 }
 
@@ -986,9 +1026,9 @@ message OrderUpdates {
 // Optionally, if a market ID is set, the results will be filtered for that market only
 message ListPositionsRequest {
   option deprecated = true;
-  // Party ID, required field.
+  // Party ID to list positions for, required field.
   string party_id = 1;
-  // Market ID.
+  // Market ID to filter for. If empty, no markets will be filtered.
   string market_id = 2;
   // Optional pagination control.
   optional Pagination pagination = 3;
@@ -1041,13 +1081,13 @@ message PositionConnection {
 
 // Request that is used to subscribe to a stream of positions
 message ObservePositionsRequest {
-  // Optional party ID.
+  // Optional party ID to filter for. If empty, no parties will be filtered from the stream.
   optional string party_id = 1;
-  // Optional market ID.
+  // Optional market ID to filter for. If empty, no markets will be filtered from the stream.
   optional string market_id = 2;
 }
 
-// Response that is received from a positions subscription request
+// Response received from a positions subscription request
 message ObservePositionsResponse {
   oneof response {
     // An 'initial image' snapshot containing current positions.
@@ -1072,15 +1112,14 @@ message PositionUpdates {
 }
 
 // Ledger entry filter sets filters on returned set of ledger entries.
-// Ledger entry data can be filtered by asset ID, market ID, party ID for sending and receiving account, as well as by transfer type.
 message LedgerEntryFilter {
-  // close_on_account_filters determines whether an entry must have accounts matching both the account_from_filter
+  // Determines whether an entry must have accounts matching both the account_from_filter
   // and the account_to_filter. If set to 'true', entries must have matches in both filters.
   // If set to `false`, entries matching only the account_from_filter or the account_to_filter will also be included.
   bool close_on_account_filters = 1;
-  // `AccountFilter` object used to set values for filtering sender accounts.
+  // Used to set values for filtering sender accounts.
   AccountFilter from_account_filter = 2;
-  // `AccountFilter` object used to set values for filtering receiver accounts.
+  // Used to set values for filtering receiver accounts.
   AccountFilter to_account_filter = 3;
   // List of transfer types that is used for filtering sender and receiver accounts.
   repeated vega.TransferType transfer_types = 5;
@@ -1105,7 +1144,7 @@ message AggregatedLedgerEntry {
   string quantity = 3;
   // Transfer type.
   vega.TransferType transfer_type = 4;
-  // Asset ID.
+  // Asset ID for the asset associated with the entry.
   optional string asset_id = 5;
   // Type of account sent from.
   vega.AccountType from_account_type = 6;
@@ -1142,10 +1181,8 @@ message ListLedgerEntriesRequest {
 message ExportLedgerEntriesRequest {
   // Party ID to export ledger entries for.
   string party_id = 1 [(google.api.field_behavior) = REQUIRED];
-  // Asset ID to export ledger entries for.
-  string asset_id = 2;
-  // Optional pagination control.
-  optional Pagination pagination = 3;
+  // Optional: Asset ID.
+  string asset_id = 2 [(google.api.field_behavior) = REQUIRED];
   // Date range to export ledger entries for.
   optional DateRange date_range = 4;
 }
@@ -1156,15 +1193,7 @@ message ListLedgerEntriesResponse {
   AggregatedLedgerEntriesConnection ledger_entries = 1;
 }
 
-// Response that is received when exporting ledger entries
-message ExportLedgerEntriesResponse {
-  // Exported ledger entries data as byte stream.
-  bytes data = 1;
-  // Page information that is used for fetching further pages.
-  PageInfo page_info = 2;
-}
-
-// Aggregated ledger entry data with the corresponding cursor.
+// Represents the aggregated ledger entry data with corresponding cursor for it
 message AggregatedLedgerEntriesEdge {
   // 'AggregatedLedgerEntry' data.
   AggregatedLedgerEntry node = 1;
@@ -1217,7 +1246,7 @@ message GetBalanceHistoryResponse {
 
 // Aggregated balance data with the corresponding cursor.
 message AggregatedBalanceEdge {
-  // AggregatedBalance data.
+  // Balance of the set of requested accounts.
   AggregatedBalance node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1310,7 +1339,7 @@ message ObserveMarketsDataResponse {
 
 // Request that is sent when requesting latest market depth data
 message GetLatestMarketDepthRequest {
-  // Market ID, required field.
+  // Market ID to request market depth for, required field.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
   // Optional field to indicate the maximum market depth.
   optional uint64 max_depth = 2;
@@ -1318,7 +1347,7 @@ message GetLatestMarketDepthRequest {
 
 // Response that is received when latest market depth data is queried
 message GetLatestMarketDepthResponse {
-  // Market ID.
+  // Market ID of the depth levels returned.
   string market_id = 1;
   // Zero or more price levels for the buy side of the market depth data.
   repeated vega.PriceLevel buy = 2;
@@ -1340,13 +1369,13 @@ message ListLatestMarketDataResponse {
 
 // Request that is sent when listing the latest market data for a given market
 message GetLatestMarketDataRequest {
-  // Market ID, required field.
+  // Market ID to retrieve market data for, required field.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
 // Response that is received when listing the latest market data for a given market
 message GetLatestMarketDataResponse {
-  // Market ID, required field.
+  // Market data that was requested.
   vega.MarketData market_data = 1;
 }
 
@@ -1354,7 +1383,7 @@ message GetLatestMarketDataResponse {
 message GetMarketDataHistoryByIDRequest {
   reserved 5;
 
-  // Market ID, required field.
+  // Market ID to request data history for, required field.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
   // Optional Unix time in nanoseconds.
   optional int64 start_timestamp = 2;
@@ -1372,7 +1401,7 @@ message GetMarketDataHistoryByIDResponse {
 
 // Market data with the corresponding cursor.
 message MarketDataEdge {
-  // 'MarketData'.
+  // Data generated by a market when open.
   vega.MarketData node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1414,7 +1443,7 @@ message ListTransfersResponse {
 
 // Transfers data with the corresponding cursor.
 message TransferEdge {
-  // Transfer data.
+  // Data relating to a transfer that has been made.
   vega.events.v1.Transfer node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1443,7 +1472,7 @@ message GetNetworkLimitsResponse {
 
 // Request that is used to fetch a list of supported intervals for the given market along with the corresponding candle ID
 message ListCandleIntervalsRequest {
-  // Unique ID for the market.
+  // Unique ID for the market to list candle intervals for.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -1495,7 +1524,7 @@ message ObserveCandleDataResponse {
 // Request that is used when listing candles for a market at an interval
 message ListCandleDataRequest {
   reserved 4;
-  // Candle ID, required field.
+  // Candle ID to retrieve candle data for, required field.
   string candle_id = 1 [(google.api.field_behavior) = REQUIRED];
   // Timestamp to retrieve candles since, in nanoseconds since the epoch.
   int64 from_timestamp = 2;
@@ -1513,7 +1542,7 @@ message ListCandleDataResponse {
 
 // Candle data with the corresponding cursor.
 message CandleEdge {
-  // Candle data.
+  // Candlestick data, i.e. high, low, open, and closing prices for an interval of trading.
   Candle node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1548,7 +1577,7 @@ message ListVotesResponse {
 
 // Votes data with the corresponding cursor.
 message VoteEdge {
-  // Vote data.
+  // Data associated with a governance vote.
   vega.Vote node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1572,7 +1601,7 @@ message ObserveVotesRequest {
 
 // Response that is received from votes subscription
 message ObserveVotesResponse {
-  // Vote data.
+  // Data associated with governance votes that are published to the stream.
   vega.Vote vote = 1;
 }
 
@@ -1695,7 +1724,7 @@ message ERC20MultiSigSignerRemovedBundle {
 
 // Request for listing the signature bundle to an ERC-20 token in the collateral bridge
 message GetERC20ListAssetBundleRequest {
-  // ID of the asset requested.
+  // Asset ID of the asset bundle requested.
   string asset_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -1703,7 +1732,7 @@ message GetERC20ListAssetBundleRequest {
 message GetERC20ListAssetBundleResponse {
   // Address of the asset on ethereum.
   string asset_source = 1;
-  // Vega asset ID.
+  // Asset ID for the underlying Vega asset.
   string vega_asset_id = 2;
   // Nonce, which is actually the internal reference for the proposal.
   string nonce = 3;
@@ -1722,7 +1751,7 @@ message GetERC20SetAssetLimitsBundleRequest {
 message GetERC20SetAssetLimitsBundleResponse {
   // Address of the asset on ethereum.
   string asset_source = 1;
-  // Vega asset ID.
+  // Asset ID for the underlying Vega asset.
   string vega_asset_id = 2;
   // Nonce, which is actually the internal reference for the proposal.
   string nonce = 3;
@@ -1764,7 +1793,7 @@ message GetERC20WithdrawalApprovalResponse {
 
 // Request for the latest trade that occurred on Vega for a given market
 message GetLastTradeRequest {
-  // Market ID, required field.
+  // Market ID to retrieve the last trade for, required field.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -1804,7 +1833,7 @@ message TradeConnection {
 
 // Trade data item with the corresponding cursor..
 message TradeEdge {
-  // Trade data.
+  // Data associated with a trade that has been executed.
   vega.Trade node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1858,6 +1887,7 @@ message ListOracleSpecsResponse {
 
 // Request to get all seen oracle data
 message ListOracleDataRequest {
+  // Oracle spec ID to list data for.
   optional string oracle_spec_id = 1;
   // Pagination controls.
   optional Pagination pagination = 2;
@@ -1871,7 +1901,7 @@ message ListOracleDataResponse {
 
 // Oracle specs data item with the corresponding cursor.
 message OracleSpecEdge {
-  // Oracle spec data.
+  // External spec data that satisfies the list request.
   vega.OracleSpec node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1887,7 +1917,7 @@ message OracleSpecsConnection {
 
 // Oracle data item with the corresponding cursor.
 message OracleDataEdge {
-  // Oracle data.
+  // Data that was received from an external oracle.
   vega.OracleData node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1961,7 +1991,7 @@ message GetPartyResponse {
 
 // Request to list parties by ID
 message ListPartiesRequest {
-  // Party ID.
+  // Party ID to filter for. If omitted, no filter will be applied.
   string party_id = 1;
   // Pagination control.
   Pagination pagination = 2;
@@ -1975,7 +2005,7 @@ message ListPartiesResponse {
 
 // Party data with the corresponding cursor.
 message PartyEdge {
-  // Party data.
+  // Data associated with a party.
   vega.Party node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -1991,7 +2021,7 @@ message PartyConnection {
 
 // Order data with the corresponding cursor.
 message OrderEdge {
-  // Order data.
+  // Data associated with an order submitted to a Vega node.
   vega.Order node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2017,14 +2047,15 @@ message ListMarginLevelsResponse {
 // If a party ID is provided, the stream will contain margin levels for that party only.
 // Optionally, the list can be additionally filtered by market
 message ObserveMarginLevelsRequest {
-  // Party ID, required field.
+  // Party ID to filter for. If empty, no parties will be filtered.
   string party_id = 1;
-  // Market ID.
+  // Optional Market ID to filter for. If omitted, no markets will be filtered.
   optional string market_id = 2;
 }
 
 // Response from subscribing to margin levels data
 message ObserveMarginLevelsResponse {
+  // Margin levels data that match the subscription request filters.
   vega.MarginLevels margin_levels = 1;
 }
 
@@ -2038,7 +2069,7 @@ message OrderConnection {
 
 // Margin data with the corresponding cursor.
 message MarginEdge {
-  // Margin levels data.
+  // Margin levels data that satisfy a list margin levels request.
   vega.MarginLevels node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2074,7 +2105,7 @@ message ListRewardsResponse {
 
 // Rewards data with the corresponding cursor.
 message RewardEdge {
-  // Rewards data.
+  // Details for a single reward payment.
   vega.Reward node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2193,7 +2224,7 @@ message ListDepositsResponse {
 
 // Deposits data with the corresponding cursor.
 message DepositEdge {
-  // Deposit data.
+  // Data associated with a single deposit made on the Vega network.
   vega.Deposit node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2240,7 +2271,7 @@ message ListWithdrawalsResponse {
 
 // Withdrawals data with the corresponding cursor.
 message WithdrawalEdge {
-  // Withdrawals data.
+  // Data associated with a single withdrawal made from the Vega network.
   vega.Withdrawal node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2322,7 +2353,7 @@ message ListLiquidityProvisionsResponse {
 
 // Liquidity provision data with the corresponding cursor.
 message LiquidityProvisionsEdge {
-  // Liquidity provision data.
+  // Data corresponding to a liquidity provider's commitment.
   vega.LiquidityProvision node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2361,7 +2392,7 @@ message GetGovernanceDataRequest {
 
 // Response from getting governance data
 message GetGovernanceDataResponse {
-  // Governance data content.
+  // Governance data content, i.e. proposal and votes for and against.
   vega.GovernanceData data = 1;
 }
 
@@ -2405,7 +2436,7 @@ message ListGovernanceDataResponse {
 
 // Governance data with the corresponding cursor.
 message GovernanceDataEdge {
-  // Governance data content.
+  // Governance data content, i.e. proposal and votes for and against.
   vega.GovernanceData node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2427,7 +2458,7 @@ message ObserveGovernanceRequest {
 
 // Response from governance subscription
 message ObserveGovernanceResponse {
-  // Governance data.
+  // Governance data, i.e. proposal and votes for and against.
   vega.GovernanceData data = 1;
 }
 
@@ -2451,7 +2482,7 @@ message ListDelegationsResponse {
 
 // Delegation data with the corresponding cursor.
 message DelegationEdge {
-  // Delegation data.
+  // How much a party is delegating to a node and when.
   vega.Delegation node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2475,7 +2506,7 @@ message ObserveDelegationsRequest {
 
 // Response with all events related to delegations, with the given filters
 message ObserveDelegationsResponse {
-  // Delegation data.
+  // How much a party is delegating to a node and when.
   vega.Delegation delegation = 1;
 }
 
@@ -2483,7 +2514,7 @@ message ObserveDelegationsResponse {
 
 // Represents a basic node without any epoch specific details like delegations, staking, rewards etc.
 message NodeBasic {
-  // Node ID.
+  // Unique ID identifying the node.
   string id = 1;
   // Node operator's public key.
   string pub_key = 2;
@@ -2508,7 +2539,7 @@ message GetNetworkDataRequest {}
 
 // Response from getting network data
 message GetNetworkDataResponse {
-  // Node data.
+  // Summary of information with respect to nodes on the Vega network.
   vega.NodeData node_data = 1;
 }
 
@@ -2520,7 +2551,7 @@ message GetNodeRequest {
 
 // Response from getting node
 message GetNodeResponse {
-  // Node data.
+  // Data specific to a single node on the Vega network.
   vega.Node node = 1;
 }
 
@@ -2540,7 +2571,7 @@ message ListNodesResponse {
 
 // Node data with the corresponding cursor.
 message NodeEdge {
-  // Node data.
+  // Data specific to a single node on the Vega network.
   vega.Node node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2556,7 +2587,7 @@ message NodesConnection {
 
 // Request to specify the ID of the resource to retrieve aggregated signatures for
 message ListNodeSignaturesRequest {
-  // Resource ID, required field.
+  // Resource ID to list signatures for, required field.
   string id = 1 [(google.api.field_behavior) = REQUIRED];
   // Optional pagination information to limit the data that is returned.
   optional Pagination pagination = 2;
@@ -2588,12 +2619,14 @@ message NodeSignaturesConnection {
 
 // Request to fetch epoch data
 message GetEpochRequest {
-  // Epoch ID to get, if provided.
+  // Epoch ID to get, if provided. If omitted, data for the current epoch is returned.
   optional uint64 id = 1;
 }
 
 // Response from getting epoch
 message GetEpochResponse {
+  // Data specific to a single epoch on the Vega network. This includes the epoch number,
+  // start and end times, and the nodes that participated in the epoch.
   vega.Epoch epoch = 1;
 }
 
@@ -2617,6 +2650,7 @@ message EstimateFeeResponse {
 
 // Request to fetch the estimated MarginLevels if an order were to trade immediately
 message EstimateMarginRequest {
+  option deprecated = true;
   // Market ID for the order.
   string market_id = 1 [(google.api.field_behavior) = REQUIRED];
   // Party ID of the order.
@@ -2633,6 +2667,7 @@ message EstimateMarginRequest {
 
 // Response to an estimate margin request, containing the estimated margin levels for a given order
 message EstimateMarginResponse {
+  option deprecated = true;
   // Summary of the estimated margins for this order if it were to trade now.
   vega.MarginLevels margin_levels = 2;
 }
@@ -2663,7 +2698,7 @@ message GetNetworkParameterResponse {
 
 // Network parameter with the corresponding cursor.
 message NetworkParameterEdge {
-  // Network parameter data.
+  // Name and associated value of a network parameter.
   vega.NetworkParameter node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2703,7 +2738,7 @@ message ListCheckpointsResponse {
 
 // Checkpoint data with the corresponding cursor.
 message CheckpointEdge {
-  // Checkpoint data.
+  // Data relating to a single checkpoint generated by the Vega network.
   Checkpoint node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2767,9 +2802,9 @@ message GetRiskFactorsResponse {
 message ObserveEventBusRequest {
   // One or more types of event, required field.
   repeated vega.events.v1.BusEventType type = 1;
-  // Market ID, optional field.
+  // Market ID to filter for, optional field. If empty, no markets will be excluded from the stream.
   string market_id = 2;
-  // Party ID, optional field.
+  // Party ID to filter for, optional field. If empty, no parties will be excluded from the stream.
   string party_id = 3;
   // Batch size,
   // If not specified, any events received will be sent immediately. If the client is not ready
@@ -2783,7 +2818,7 @@ message ObserveEventBusRequest {
 
 // Response to a subscribed stream of events from the Vega event bus
 message ObserveEventBusResponse {
-  // List of events.
+  // List of events that occurred on the Vega event bus.
   repeated vega.events.v1.BusEvent events = 1;
 }
 
@@ -2816,7 +2851,7 @@ message ListKeyRotationsResponse {
 
 // Key rotation data with the corresponding cursor.
 message KeyRotationEdge {
-  // Key rotation data.
+  // Data relating to a key rotation that was performed by a node on the Vega network.
   vega.events.v1.KeyRotation node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2856,7 +2891,7 @@ message EthereumKeyRotationsConnection {
 
 // Ethereum key rotation data with the corresponding cursor.
 message EthereumKeyRotationEdge {
-  // Ethereuem key rotation data.
+  // Data relating to an Ethereum key rotation performed by a node on the Vega network.
   vega.events.v1.EthereumKeyRotation node = 1;
   // Cursor that can be used to fetch further pages.
   string cursor = 2;
@@ -2977,7 +3012,7 @@ message GetMostRecentNetworkHistorySegmentRequest {}
 
 // Response from getting most recent history segment
 message GetMostRecentNetworkHistorySegmentResponse {
-  // HistorySegment data.
+  // Data relating to a history segment created by a Vega data node.
   HistorySegment segment = 1;
   // Key seed for the swarm section.
   string swarm_key_seed = 2;
@@ -3008,11 +3043,11 @@ message GetNetworkHistoryStatusRequest {}
 message GetNetworkHistoryStatusResponse {
   // IPFS address of the data node currently connected to.
   string ipfs_address = 1;
-  // Swarm key.
+  // Swarm key used by the IPFS swarm.
   string swarm_key = 2;
-  // Swarm key seed.
+  // Swarm key seed used by the IPFS swarm.
   string swarm_key_seed = 3;
-  // Connected peers.
+  // List of peers connected to the IPFS swarm.
   repeated string connected_peers = 5;
 }
 
@@ -3021,7 +3056,7 @@ message GetNetworkHistoryBootstrapPeersRequest {}
 
 // Response containing the nodes network history bootstrap peers
 message GetNetworkHistoryBootstrapPeersResponse {
-  // Bootstrap peers.
+  // List of peers that can be used to bootstrap a Vega data node.
   repeated string bootstrap_peers = 1;
 }
 
@@ -3060,6 +3095,7 @@ message ExportNetworkHistoryRequest {
 
 // Request to list all entities that were created by the given transaction hash
 message ListEntitiesRequest {
+  // Transaction hash to match against
   string transaction_hash = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
@@ -3100,3 +3136,65 @@ message PingRequest {}
 
 // Ping response from the data node
 message PingResponse {}
+
+// Basic description of an order.
+message OrderInfo {
+  // Side for the order, e.g. buy or sell.
+  vega.Side side = 1;
+  // Price for the order. The price is an integer, for example `123456` is a correctly
+  // formatted price of `1.23456` assuming market configured to 5 decimal places.
+  // This field is an unsigned integer passed as a string and needs to be scaled using the market's decimal places.
+  string price = 2;
+  // Size remaining.
+  // This field is an unsigned integer passed as a string and needs to be scaled using the market's position decimal places.
+  uint64 remaining = 3;
+  // Boolean that indicates if it is a market order.
+  bool is_market_order = 4;
+}
+
+// Request for the estimate of the margin level and, if available collateral is provided, liqudation price for the specified position.
+message EstimatePositionRequest {
+  // Market ID.
+  string market_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // Open volume.
+  // This field is an signed integer (negative for short position) passed as a string and needs to be scaled using the market's position decimal places.
+  int64 open_volume = 2 [(google.api.field_behavior) = REQUIRED];
+  // Open and/or hypothetical orders.
+  repeated OrderInfo orders = 3;
+  // Optional argument specifying collateral available for the position, if provided then response will contain the liquidation price estimate.
+  optional string collateral_available = 4;
+}
+
+// Response for the estimate of the margin level and, if available collateral was provided in the request, liqudation price for the specified position.
+message EstimatePositionResponse {
+  // Margin level range estimate for the specified position.
+  MarginEstimate margin = 1;
+  // Liquidation price range estimate for the specified position. Only populated if available collateral was specified in the request.
+  LiquidationEstimate liquidation = 2;
+}
+
+// Margin level estimate for both worst and best case possible.
+message MarginEstimate {
+  // Margin level estimate assuming slippage cap is applied.
+  vega.MarginLevels worst_case = 1;
+  // Margin level estimate assuming no slippage.
+  vega.MarginLevels best_case = 2;
+}
+
+// Liquidation estimate for both worst and best case possible.
+message LiquidationEstimate {
+  // Liquidation price estimate assuming slippage cap is applied.
+  LiquidationPrice worst_case = 1;
+  // Liquidation price estimate assuming no slippage.
+  LiquidationPrice best_case = 2;
+}
+
+// Liquidation price estimate for either only the current open volume and position given some or all buy orders get filled, or position given some or all sell orders get filled.
+message LiquidationPrice {
+  // Liquidation price for current open volume ignoring any active orders.
+  string open_volume_only = 1;
+  // Liquidation price assuming buy orders start getting filled.
+  string including_buy_orders = 2;
+  // Liquidation price assuming sell orders start getting filled.
+  string including_sell_orders = 3;
+}
