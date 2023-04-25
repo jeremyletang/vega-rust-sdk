@@ -55,3 +55,9 @@ pub mod blockexplorer {
         }
     }
 }
+
+pub mod google {
+    pub mod api {
+        include!(concat!(env!("OUT_DIR"), "/google.api.rs"));
+    }
+}
