@@ -31,6 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         r#type: Type::Limit.into(),
         reduce_only: false,
         post_only: false,
+        iceberg_opts: None,
     });
 
     let tx = t.sign(&order).await?;

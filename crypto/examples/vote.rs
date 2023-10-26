@@ -10,7 +10,7 @@ const PRIVKEY: &str = "e70da3716e54cfe4cbed58b584b85095bb4a8257a4b39ec91b491f295
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut t = Transact::new(
         Credentials::PrivateKey(PRIVKEY),
-        "tcp://n10.testnet.vega.xyz:3002",
+        "tcp://n06.testnet.vega.xyz:3002",
     )
     .await?;
 
