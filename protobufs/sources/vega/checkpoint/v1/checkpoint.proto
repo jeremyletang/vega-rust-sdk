@@ -6,6 +6,7 @@ import "vega/assets.proto";
 import "vega/chain_events.proto";
 import "vega/events/v1/events.proto";
 import "vega/governance.proto";
+import "vega/markets.proto";
 import "vega/vega.proto";
 
 option go_package = "code.vegaprotocol.io/vega/protos/vega/checkpoint/v1";
@@ -31,6 +32,7 @@ message Checkpoint {
   bytes staking = 11;
   bytes multisig_control = 12;
   bytes market_tracker = 13;
+  bytes execution = 14;
 }
 
 // AssetEntry is a single (enabled) asset
@@ -146,6 +148,19 @@ message RecurringTransfers {
   repeated vega.events.v1.Transfer recurring_transfers = 1;
 }
 
+message GovernanceTransfer {
+  string id = 1;
+  string reference = 2;
+  vega.events.v1.Transfer.Status status = 3;
+  int64 timestamp = 4;
+  vega.NewTransferConfiguration config = 5;
+}
+
+message ScheduledGovernanceTransferAtTime {
+  int64 deliver_on = 1;
+  repeated GovernanceTransfer transfers = 2;
+}
+
 message Banking {
   repeated ScheduledTransferAtTime transfers_at_time = 1;
   RecurringTransfers recurring_transfers = 2;
@@ -153,6 +168,8 @@ message Banking {
   repeated AssetAction asset_actions = 4;
   uint64 last_seen_eth_block = 5;
   repeated string seen_refs = 6;
+  repeated ScheduledGovernanceTransferAtTime governance_transfers_at_time = 7;
+  repeated GovernanceTransfer recurring_governance_transfers = 8;
 }
 
 message BridgeState {
@@ -190,6 +207,7 @@ message MultisigControl {
 
 message MarketTracker {
   repeated MarketActivityTracker market_activity = 1;
+  repeated TakerNotionalVolume taker_notional_volume = 2;
 }
 
 message MarketActivityTracker {
@@ -202,11 +220,78 @@ message MarketActivityTracker {
   repeated string bonus_paid = 7;
   string value_traded = 8;
   bool ready_to_delete = 9;
+
+  repeated TWPositionData time_weighted_position = 10;
+  repeated TWNotionalData time_weighted_notional = 11;
+  repeated ReturnsData returns_data = 12;
+
+  repeated EpochPartyFees maker_fees_received_history = 13;
+  repeated EpochPartyFees maker_fees_paid_history = 14;
+  repeated EpochPartyFees lp_fees_history = 15;
+
+  repeated EpochTimeWeightPositionData time_weighted_position_data_history = 16;
+  repeated EpochTimeWeightedNotionalData time_weighted_notional_data_history = 17;
+  repeated EpochReturnsData returns_data_history = 18;
+}
+
+message EpochTimeWeightPositionData {
+  repeated PartyTimeWeightedPosition party_time_weighted_positions = 1;
+}
+
+message EpochTimeWeightedNotionalData {
+  repeated PartyTimeWeightedNotional party_time_weighted_notionals = 1;
+}
+
+message PartyTimeWeightedNotional {
+  string party = 1;
+  bytes tw_notional = 2;
+}
+
+message PartyTimeWeightedPosition {
+  string party = 1;
+  uint64 tw_position = 2;
+}
+
+message EpochPartyFees {
+  repeated PartyFeesHistory party_fees = 1;
+}
+
+message TakerNotionalVolume {
+  string party = 1;
+  bytes volume = 2;
+}
+
+message EpochReturnsData {
+  repeated ReturnsData returns = 1;
+}
+
+message ReturnsData {
+  string party = 1;
+  bytes return = 2;
+}
+
+message TWPositionData {
+  string party = 1;
+  uint64 position = 2;
+  int64 time = 3;
+  uint64 tw_position = 4;
+}
+
+message TWNotionalData {
+  string party = 1;
+  bytes notional = 2;
+  int64 time = 3;
+  bytes tw_notional = 4;
 }
 
 message PartyFees {
   string party = 1;
   string fee = 2;
+}
+
+message PartyFeesHistory {
+  string party = 1;
+  bytes fee = 2;
 }
 
 message AssetAction {
@@ -223,4 +308,46 @@ message AssetAction {
   vega.ERC20AssetLimitsUpdated erc20_asset_limits_updated = 10;
   bool erc20_bridge_stopped = 11;
   bool erc20_bridge_resumed = 12;
+}
+
+message ELSShare {
+  // Party ID of the liquidity provider.
+  string party_id = 1;
+  // The equity-like share of the liquidity provider, representing their share in the total provided liquidity expressed as a value between 0 and 1.
+  string share = 2;
+  // Amount committed. This is the total commitment made. It does not necessarily match the LP balance.
+  string supplied_stake = 3;
+  // LP stake, weighted according to the time the stake was committed and market growth.
+  string virtual_stake = 4;
+  // Average entry valuation. As time increases the weight of stake, this is the overall valuation of the current stake.
+  string avg = 5;
+}
+
+message MarketState {
+  // Unique ID for the market
+  string id = 1;
+
+  // The current equity-like share data for a market.
+  repeated ELSShare shares = 2;
+
+  // Current balance of the insurance pool.
+  string insurance_balance = 3;
+
+  // Total trade value which last determined the growth rate of the market.
+  string last_trade_value = 4;
+
+  // Total trade volume which last determined the growth rate of the market.
+  string last_trade_volume = 5;
+
+  // Succession window in nanoseconds: the timestamp when this market cannot be succeeded anymore.
+  int64 succession_window = 6;
+
+  // The underlying market should be present in case the successor market is enacted during the succession window.
+  // This field can be omitted if the market is not yet settled.
+  vega.Market market = 7;
+}
+
+message ExecutionState {
+  // Market data that should be preserved, like equity-like shares, and settled markets that have pending successor markets.
+  repeated MarketState data = 1;
 }

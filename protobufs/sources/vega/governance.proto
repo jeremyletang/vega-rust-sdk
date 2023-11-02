@@ -9,6 +9,16 @@ import "vega/vega.proto";
 
 option go_package = "code.vegaprotocol.io/vega/protos/vega";
 
+// Spot product configuration
+message SpotProduct {
+  // Base asset ID.
+  string base_asset = 1;
+  // Quote asset ID.
+  string quote_asset = 2;
+  // Product name.
+  string name = 3;
+}
+
 // Future product configuration
 message FutureProduct {
   // Asset ID for the product's settlement asset.
@@ -23,6 +33,28 @@ message FutureProduct {
   DataSourceSpecToFutureBinding data_source_spec_binding = 5;
 }
 
+// Perpetual product configuration
+message PerpetualProduct {
+  // Asset ID for the product's settlement asset.
+  string settlement_asset = 1;
+  // Product quote name.
+  string quote_name = 2;
+  // Controls how much the upcoming funding payment liability contributes to party's margin, in the range [0, 1].
+  string margin_funding_factor = 3;
+  // Continuously compounded interest rate used in funding rate calculation, in the range [-1, 1].
+  string interest_rate = 4;
+  // Lower bound for the clamp function used as part of the funding rate calculation, in the range [-1, 1].
+  string clamp_lower_bound = 5;
+  // Upper bound for the clamp function used as part of the funding rate calculation, in the range [-1, 1].
+  string clamp_upper_bound = 6;
+  // Data source spec describing the data source for settlement schedule.
+  vega.DataSourceDefinition data_source_spec_for_settlement_schedule = 7;
+  // Data source spec describing the data source for settlement.
+  vega.DataSourceDefinition data_source_spec_for_settlement_data = 8;
+  // Binding between the data source spec and the settlement data.
+  DataSourceSpecToPerpetualBinding data_source_spec_binding = 9;
+}
+
 // Instrument configuration
 message InstrumentConfiguration {
   // Instrument name.
@@ -33,37 +65,85 @@ message InstrumentConfiguration {
   oneof product {
     // Future.
     FutureProduct future = 100;
+    // Spot.
+    SpotProduct spot = 101;
+    // Perpetual.
+    PerpetualProduct perpetual = 102;
   }
 }
 
-// Configuration for a new market on Vega
-message NewMarketConfiguration {
-  // New market instrument configuration.
+// Configuration for a new spot market on Vega
+message NewSpotMarketConfiguration {
+  // New spot market instrument configuration.
   InstrumentConfiguration instrument = 1;
-  // Decimal places used for the new market, sets the smallest price increment on the book.
+  // Decimal places used for the new spot market, sets the smallest price increment on the book.
   uint64 decimal_places = 2;
-  // Optional new market metadata, tags.
+  // Optional new spot market metadata, tags.
   repeated string metadata = 3;
   // Price monitoring parameters.
   PriceMonitoringParameters price_monitoring_parameters = 4;
-  // Liquidity monitoring parameters.
-  LiquidityMonitoringParameters liquidity_monitoring_parameters = 5;
-  // New market risk model parameters.
+  // Specifies parameters related to target stake calculation.
+  TargetStakeParameters target_stake_parameters = 5;
+  // New spot market risk model parameters.
   oneof risk_parameters {
     // Simple risk model parameters, valid only if MODEL_SIMPLE is selected.
     SimpleModelParams simple = 100;
     // Log normal risk model parameters, valid only if MODEL_LOG_NORMAL is selected.
     LogNormalRiskModel log_normal = 101;
   }
-  // Decimal places for order sizes, sets what size the smallest order / position on the market can be.
+  // Decimal places for order sizes, sets what size the smallest order / position on the spot market can be.
   int64 position_decimal_places = 6;
+  // Specifies the liquidity provision SLA parameters.
+  LiquiditySLAParameters sla_params = 7;
+}
+
+// Configuration for a new futures market on Vega
+message NewMarketConfiguration {
+  // New futures market instrument configuration.
+  InstrumentConfiguration instrument = 1;
+  // Decimal places used for the new futures market, sets the smallest price increment on the book.
+  uint64 decimal_places = 2;
+  // Optional new futures market metadata, tags.
+  repeated string metadata = 3;
+  // Price monitoring parameters.
+  PriceMonitoringParameters price_monitoring_parameters = 4;
+  // Liquidity monitoring parameters.
+  LiquidityMonitoringParameters liquidity_monitoring_parameters = 5;
+  // New futures market risk model parameters.
+  oneof risk_parameters {
+    // Simple risk model parameters, valid only if MODEL_SIMPLE is selected.
+    SimpleModelParams simple = 100;
+    // Log normal risk model parameters, valid only if MODEL_LOG_NORMAL is selected.
+    LogNormalRiskModel log_normal = 101;
+  }
+  // Decimal places for order sizes, sets what size the smallest order / position on the futures market can be.
+  int64 position_decimal_places = 6;
+  // DEPRECATED: Use liquidity SLA parameters instead.
   // Percentage move up and down from the mid price which specifies the range of
-  // price levels over which automated liquidity provision orders will be deployed.
-  string lp_price_range = 8;
+  // price levels over which automated liquidity provisions will be deployed.
+  optional string lp_price_range = 8;
   // Linear slippage factor is used to cap the slippage component of maintenance margin - it is applied to the slippage volume.
   string linear_slippage_factor = 9;
   // Quadratic slippage factor is used to cap the slippage component of maintenance margin - it is applied to the square of the slippage volume.
   string quadratic_slippage_factor = 10;
+  // Successor configuration. If this proposal is meant to succeed a given market, then this should be set.
+  optional SuccessorConfiguration successor = 11;
+  // Liquidity SLA parameters
+  LiquiditySLAParameters liquidity_sla_parameters = 12;
+}
+
+// New spot market on Vega
+message NewSpotMarket {
+  // Configuration of the new spot market.
+  NewSpotMarketConfiguration changes = 1;
+}
+
+// Configuration required to turn a new market proposal in to a successor market proposal.
+message SuccessorConfiguration {
+  // ID of the market that the successor should take over from.
+  string parent_market_id = 1;
+  // A decimal value between or equal to 0 and 1, specifying the fraction of the insurance pool balance that is carried over from the parent market to the successor.
+  string insurance_pool_fraction = 2;
 }
 
 // New market on Vega
@@ -76,34 +156,64 @@ message NewMarket {
 message UpdateMarket {
   // Market ID the update is for.
   string market_id = 1;
-  // Updated configuration of the market.
+  // Updated configuration of the futures market.
   UpdateMarketConfiguration changes = 2;
 }
 
-// Configuration to update a market on Vega
+// Update an existing spot market on Vega
+message UpdateSpotMarket {
+  // Market ID the update is for.
+  string market_id = 1;
+  // Updated configuration of the spot market.
+  UpdateSpotMarketConfiguration changes = 2;
+}
+
+// Configuration to update a futures market on Vega
 message UpdateMarketConfiguration {
-  // Updated market instrument configuration.
+  // Updated futures market instrument configuration.
   UpdateInstrumentConfiguration instrument = 1;
-  // Optional market metadata, tags.
+  // Optional futures market metadata, tags.
   repeated string metadata = 2;
   // Price monitoring parameters.
   PriceMonitoringParameters price_monitoring_parameters = 3;
   // Liquidity monitoring parameters.
   LiquidityMonitoringParameters liquidity_monitoring_parameters = 4;
-  // Updated market risk model parameters.
+  // Updated futures market risk model parameters.
   oneof risk_parameters {
     // Simple risk model parameters, valid only if MODEL_SIMPLE is selected.
     SimpleModelParams simple = 100;
     // Log normal risk model parameters, valid only if MODEL_LOG_NORMAL is selected.
     LogNormalRiskModel log_normal = 101;
   }
+  // DEPRECATED: Use liquidity SLA parameters instead.
   // Percentage move up and down from the mid price which specifies the range of
-  // price levels over which automated liquidity provision orders will be deployed.
-  string lp_price_range = 5;
+  // price levels over which automated liquidity provisions will be deployed.
+  optional string lp_price_range = 5;
   // Linear slippage factor is used to cap the slippage component of maintenance margin - it is applied to the slippage volume.
   string linear_slippage_factor = 6;
   // Quadratic slippage factor is used to cap the slippage component of maintenance margin - it is applied to the square of the slippage volume.
   string quadratic_slippage_factor = 7;
+  // Liquidity SLA parameters
+  LiquiditySLAParameters liquidity_sla_parameters = 8;
+}
+
+// Configuration to update a spot market on Vega
+message UpdateSpotMarketConfiguration {
+  // Optional spot market metadata, tags.
+  repeated string metadata = 1;
+  // Price monitoring parameters.
+  PriceMonitoringParameters price_monitoring_parameters = 2;
+  // Specifies parameters related to target stake calculation.
+  TargetStakeParameters target_stake_parameters = 3;
+  // Update spot market risk model parameters.
+  oneof risk_parameters {
+    // Simple risk model parameters, valid only if MODEL_SIMPLE is selected.
+    SimpleModelParams simple = 100;
+    // Log normal risk model parameters, valid only if MODEL_LOG_NORMAL is selected.
+    LogNormalRiskModel log_normal = 101;
+  }
+  // Specifies the liquidity provision SLA parameters.
+  LiquiditySLAParameters sla_params = 4;
 }
 
 // Instrument configuration
@@ -114,6 +224,8 @@ message UpdateInstrumentConfiguration {
   oneof product {
     // Future.
     UpdateFutureProduct future = 100;
+    // Perpetual.
+    UpdatePerpetualProduct perpetual = 101;
   }
 }
 
@@ -127,6 +239,26 @@ message UpdateFutureProduct {
   vega.DataSourceDefinition data_source_spec_for_trading_termination = 3;
   // The binding between the data source spec and the settlement data.
   DataSourceSpecToFutureBinding data_source_spec_binding = 4;
+}
+
+// Perpetual product configuration
+message UpdatePerpetualProduct {
+  // Human-readable name/abbreviation of the quote name.
+  string quote_name = 1;
+  // Controls how much the upcoming funding payment liability contributes to party's margin, in the range [0, 1].
+  string margin_funding_factor = 2;
+  // Continuously compounded interest rate used in funding rate calculation, in the range [-1, 1].
+  string interest_rate = 3;
+  // Lower bound for the clamp function used as part of the funding rate calculation, in the range [-1, 1].
+  string clamp_lower_bound = 4;
+  // Upper bound for the clamp function used as part of the funding rate calculation, in the range [-1, 1].
+  string clamp_upper_bound = 5;
+  // Data source spec describing the data source for settlement schedule.
+  vega.DataSourceDefinition data_source_spec_for_settlement_schedule = 6;
+  // Data source spec describing the data source for settlement.
+  vega.DataSourceDefinition data_source_spec_for_settlement_data = 7;
+  // Binding between the data source spec and the settlement data.
+  DataSourceSpecToPerpetualBinding data_source_spec_binding = 8;
 }
 
 // Update network configuration on Vega
@@ -166,9 +298,9 @@ message ProposalTerms {
   int64 validation_timestamp = 3;
   // Changes being proposed.
   oneof change {
-    // Proposal change for modifying an existing market on Vega.
+    // Proposal change for modifying an existing futures market on Vega.
     UpdateMarket update_market = 101;
-    // Proposal change for creating new market on Vega.
+    // Proposal change for creating new futures market on Vega.
     NewMarket new_market = 102;
     // Proposal change for updating Vega network parameters.
     UpdateNetworkParameter update_network_parameter = 103;
@@ -179,6 +311,20 @@ message ProposalTerms {
     NewFreeform new_freeform = 105;
     // Proposal change for updating an asset.
     UpdateAsset update_asset = 106;
+    // Proposal change for creating new spot market on Vega.
+    NewSpotMarket new_spot_market = 107;
+    // Proposal change for modifying an existing spot market on Vega.
+    UpdateSpotMarket update_spot_market = 108;
+    // Proposal change for a governance transfer.
+    NewTransfer new_transfer = 109;
+    // Cancel a governance transfer.
+    CancelTransfer cancel_transfer = 110;
+    // Proposal change for updating the state of a market.
+    UpdateMarketState update_market_state = 111;
+    // Proposal change for updating the referral program.
+    UpdateReferralProgram update_referral_program = 112;
+    // Proposal change for updating the volume discount program.
+    UpdateVolumeDiscountProgram update_volume_discount_program = 113;
   }
 }
 
@@ -356,6 +502,30 @@ enum ProposalError {
   PROPOSAL_ERROR_LINEAR_SLIPPAGE_FACTOR_OUT_OF_RANGE = 44;
   // Quadratic slippage factor is out of range, either negative or too large
   PROPOSAL_ERROR_QUADRATIC_SLIPPAGE_FACTOR_OUT_OF_RANGE = 45;
+  // Validation failed for spot proposal
+  PROPOSAL_ERROR_INVALID_SPOT = 46;
+  // Spot trading not enabled
+  PROPOSAL_ERROR_SPOT_PRODUCT_DISABLED = 47;
+  // Market proposal is invalid, either invalid insurance pool fraction, or it specifies a parent market that it can't succeed.
+  PROPOSAL_ERROR_INVALID_SUCCESSOR_MARKET = 48;
+  // Governance transfer proposal is invalid
+  PROPOSAL_ERROR_GOVERNANCE_TRANSFER_PROPOSAL_FAILED = 49;
+  // Governance transfer proposal failed
+  PROPOSAL_ERROR_GOVERNANCE_TRANSFER_PROPOSAL_INVALID = 50;
+  // Proposal for cancelling transfer is invalid, check proposal ID
+  PROPOSAL_ERROR_GOVERNANCE_CANCEL_TRANSFER_PROPOSAL_INVALID = 51;
+  // Proposal for updating market state is invalid
+  PROPOSAL_ERROR_INVALID_MARKET_STATE_UPDATE = 52;
+  // Liquidity provision SLA parameters are invalid
+  PROPOSAL_ERROR_INVALID_SLA_PARAMS = 53;
+  // Mandatory liquidity provision SLA parameters are missing
+  PROPOSAL_ERROR_MISSING_SLA_PARAMS = 54;
+  // Perpetual market proposal contained invalid product definition
+  PROPOSAL_ERROR_INVALID_PERPETUAL_PRODUCT = 55;
+  // Referral program proposal is invalid
+  PROPOSAL_ERROR_INVALID_REFERRAL_PROGRAM = 56;
+  // Volume discount program proposal is invalid
+  PROPOSAL_ERROR_INVALID_VOLUME_DISCOUNT_PROGRAM = 57;
 }
 
 // Governance vote
@@ -376,11 +546,11 @@ message Vote {
 
   // Voter's party ID.
   string party_id = 1;
-  // Actual vote.
+  // Which way the party voted.
   Value value = 2;
   // Proposal ID being voted on.
   string proposal_id = 3;
-  // Vote timestamp for date and time as Unix time in nanoseconds when vote was submitted to the network.
+  // Timestamp in Unix nanoseconds when the vote was acknowledged by the network.
   int64 timestamp = 4;
   // Total number of governance token for the party that cast the vote.
   string total_governance_token_balance = 5;
@@ -388,4 +558,135 @@ message Vote {
   string total_governance_token_weight = 6;
   // The weight of the vote compared to the total amount of equity-like share on the market.
   string total_equity_like_share_weight = 7;
+}
+
+message UpdateVolumeDiscountProgram {
+  // Configuration for a change to update a volume discount program
+  VolumeDiscountProgramChanges changes = 1;
+}
+
+message VolumeDiscountProgramChanges {
+  // Defined benefit tiers in increasing order. First element will give Tier 1,
+  // second element will give Tier 2, and so on. Determines the level of
+  // benefit a party can expect based on performance criteria.
+  repeated VolumeBenefitTier benefit_tiers = 1;
+  // Timestamp as Unix time in seconds, after which when the current epoch
+  // ends, the program will end and benefits will be disabled.
+  int64 end_of_program_timestamp = 2;
+  // Number of epochs over which to evaluate a referral set's running volume.
+  uint64 window_length = 3;
+}
+
+message UpdateReferralProgram {
+  // Configuration for change to update a referral program.
+  ReferralProgramChanges changes = 1;
+}
+
+message ReferralProgramChanges {
+  // Defined benefit tiers in increasing order. First element will give Tier 1,
+  // second element will give Tier 2, and so on. Determines the level of
+  // benefit a party can expect based on performance criteria.
+  repeated BenefitTier benefit_tiers = 1;
+  // Timestamp as Unix time in seconds, after which when the current epoch
+  // ends, the program will end and benefits will be disabled.
+  int64 end_of_program_timestamp = 2;
+  // Number of epochs over which to evaluate a referral set's running volume.
+  uint64 window_length = 3;
+  // Defined staking tiers in increasing order. First element will give Tier 1,
+  // second element will give Tier 2, and so on. Determines the level of
+  // benefit a party can expect based on their staking.
+  repeated StakingTier staking_tiers = 4;
+}
+
+message UpdateMarketState {
+  // Configuration for governance-initiated change of a market's state
+  UpdateMarketStateConfiguration changes = 1;
+}
+
+enum MarketStateUpdateType {
+  // Default value, always invalid
+  MARKET_STATE_UPDATE_TYPE_UNSPECIFIED = 0;
+  // Request to terminate a market via governance
+  MARKET_STATE_UPDATE_TYPE_TERMINATE = 1;
+  // Request to suspend a market via governance
+  MARKET_STATE_UPDATE_TYPE_SUSPEND = 2;
+  // Request to resume a market via governance
+  MARKET_STATE_UPDATE_TYPE_RESUME = 3;
+}
+
+message UpdateMarketStateConfiguration {
+  // ID of the market
+  string market_id = 1;
+  // Type of the market update
+  MarketStateUpdateType update_type = 2;
+  // Settlement price, relevant only for market termination for futures markets
+  optional string price = 3;
+}
+
+message CancelTransfer {
+  // Configuration for cancellation of a governance-initiated transfer
+  CancelTransferConfiguration changes = 1;
+}
+
+message CancelTransferConfiguration {
+  // ID of the governance transfer proposal.
+  string transfer_id = 1;
+}
+
+// New governance transfer
+message NewTransfer {
+  // Configuration for a new transfer.
+  NewTransferConfiguration changes = 1;
+}
+
+enum GovernanceTransferType {
+  GOVERNANCE_TRANSFER_TYPE_UNSPECIFIED = 0;
+  GOVERNANCE_TRANSFER_TYPE_ALL_OR_NOTHING = 1;
+  GOVERNANCE_TRANSFER_TYPE_BEST_EFFORT = 2;
+}
+
+message NewTransferConfiguration {
+  // Source account type, such as network treasury, market insurance pool
+  vega.AccountType source_type = 1;
+  // If network treasury, field is empty, otherwise uses the market ID
+  string source = 2;
+  // "All or nothing" or "best effort":
+  // All or nothing: Transfers the specified amount or does not transfer anything
+  // Best effort: Transfers the specified amount or the max allowable amount if this is less than the specified amount
+  GovernanceTransferType transfer_type = 3;
+  // Maximum amount to transfer
+  string amount = 4;
+  // ID of asset to transfer
+  string asset = 5;
+  // Maximum fraction of the source account's balance to transfer as a decimal - i.e. 0.1 = 10% of the balance
+  string fraction_of_balance = 6;
+  // Specifies the account type to transfer to: reward pool, party, network insurance pool, market insurance pool
+  vega.AccountType destination_type = 7;
+  // Specifies the account to transfer to, depending on the account type:
+  // Network treasury: leave empty
+  // Party: party's public key
+  // Market insurance pool: market ID
+  string destination = 8;
+  // Specific details of the transfer.
+  oneof kind {
+    OneOffTransfer one_off = 101;
+    RecurringTransfer recurring = 102;
+  }
+}
+
+// Specific details for a one off transfer
+message OneOffTransfer {
+  // Timestamp in Unix nanoseconds for when the transfer should be delivered into the receiver's account.
+  int64 deliver_on = 1;
+}
+
+// Specific details for a recurring transfer
+message RecurringTransfer {
+  // First epoch from which this transfer shall be paid.
+
+  uint64 start_epoch = 1;
+  // Last epoch at which this transfer shall be paid.
+  optional uint64 end_epoch = 2;
+  // Optional parameter defining how a transfer is dispatched.
+  optional vega.DispatchStrategy dispatch_strategy = 3;
 }
