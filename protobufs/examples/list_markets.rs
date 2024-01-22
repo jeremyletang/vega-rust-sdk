@@ -2,7 +2,7 @@ use vega_protobufs::datanode::api::v2::{
     trading_data_service_client::TradingDataServiceClient, ListMarketsRequest,
 };
 
-const NODE_ADDRESS: &str = "tcp://n10.testnet.vega.xyz:3007";
+const NODE_ADDRESS: &str = "tcp://n07.testnet.vega.xyz:3007";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
