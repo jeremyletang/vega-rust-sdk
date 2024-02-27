@@ -1236,12 +1236,16 @@ message PerpetualData {
   uint64 seq_num = 5;
   // Funding period start time
   int64 start_time = 6;
-  // The index price used for perps.
-  string index_price = 7;
-  // The next time the index price is calculated for perps.
-  int64 next_index_price_calc = 8;
-  // The method used for calculating the index price (perps only).
-  CompositePriceType index_price_type = 9;
+  // The internal composite price used for perpetual markets.
+  string internal_composite_price = 7;
+  // The next time the internal composite price is calculated for the perpetual market, in Unix nanoseconds.
+  int64 next_internal_composite_price_calc = 8;
+  // The method used for calculating the internal composite price, for perpetual markets only.
+  CompositePriceType internal_composite_price_type = 9;
+  // Last seen value of the settlement oracle.
+  string underlying_index_price = 10;
+  // State of the internal composite price.
+  CompositePriceState internal_composite_price_state = 11;
 }
 
 // Represents market data specific to a particular product type.
@@ -1311,7 +1315,7 @@ message MarketData {
   repeated PriceMonitoringBounds price_monitoring_bounds = 24;
   // Market value proxy.
   string market_value_proxy = 25;
-  // Equity like share of liquidity fee for each liquidity provider.
+  // Equity-like share of liquidity fee for each liquidity provider.
   repeated LiquidityProviderFeeShare liquidity_provider_fee_share = 26;
   // Current state of the market.
   Market.State market_state = 27;
@@ -1329,9 +1333,25 @@ message MarketData {
   int64 next_network_closeout = 33;
   // The method used for calculating the mark price.
   CompositePriceType mark_price_type = 34;
+  // State of the internal composite price.
+  CompositePriceState mark_price_state = 35;
 }
 
-// Equity like share of liquidity fee for each liquidity provider
+message CompositePriceSource {
+  // Source of the price.
+  string price_source = 1;
+  // Current value of the composite source price.
+  string price = 2;
+  // Timestamp in Unix nanoseconds when the price source was last updated.
+  int64 last_updated = 3;
+}
+
+// Underlying state of the composite price..
+message CompositePriceState {
+  repeated CompositePriceSource price_sources = 1;
+}
+
+// Equity-like share of liquidity fee for each liquidity provider
 message LiquidityProviderFeeShare {
   // Liquidity provider party ID.
   string party = 1;
@@ -1504,6 +1524,9 @@ message EthereumL2Config {
   uint32 confirmations = 3;
   // Display name of this network
   string name = 4;
+  // Polling interval for the internal engine, needs to be adapted
+  // to the source chain depending on its block production rate.
+  uint64 block_interval = 5;
 }
 
 message EthereumL2Configs {

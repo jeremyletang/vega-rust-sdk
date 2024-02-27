@@ -225,8 +225,15 @@ message Resource {
   uint32 state = 4;
 }
 
+message EventForwarderBucket {
+  int64 ts = 1;
+  repeated string hashes = 2;
+}
+
 message EventForwarder {
+  // this is deprecated, use the other one now
   repeated string acked_events = 1;
+  repeated EventForwarderBucket buckets = 2;
 }
 
 message CollateralAccounts {
@@ -527,8 +534,8 @@ message Market {
   vega.events.v1.FeesStats fees_stats = 27;
   repeated PartyMarginFactor party_margin_factor = 28;
   CompositePriceCalculator mark_price_calculator = 29;
-  optional CompositePriceCalculator index_price_calculator = 30;
-  int64 next_index_price_calc = 31;
+  optional CompositePriceCalculator internal_composite_price_calculator = 30;
+  int64 next_internal_composite_price_calc = 31;
 }
 
 message PartyMarginFactor {
@@ -837,6 +844,7 @@ message EthContractCallResult {
   string spec_id = 3;
   bytes result = 4;
   optional string error = 5;
+  optional uint64 chain_id = 6;
 }
 
 message PendingKeyRotation {
@@ -1070,6 +1078,7 @@ message NextTimeTrigger {
 message MarketTracker {
   repeated checkpoint.v1.MarketActivityTracker market_activity = 1;
   repeated checkpoint.v1.TakerNotionalVolume taker_notional_volume = 2;
+  repeated checkpoint.v1.MarketToPartyTakerNotionalVolume market_to_party_taker_notional_volume = 3;
 }
 
 message SignerEventsPerAddress {
