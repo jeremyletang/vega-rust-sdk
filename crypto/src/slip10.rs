@@ -1,5 +1,5 @@
 use ed25519_compact::{KeyPair, Seed};
-use hmac::{Hmac, Mac, NewMac};
+use hmac::{Hmac, Mac};
 use regex::Regex;
 use sha2::Sha512;
 use std::error::Error as StdError;
